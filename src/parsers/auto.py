@@ -1,0 +1,30 @@
+import os
+
+from .line1_parser import parse_line1
+from .line2_parser import parse_line2
+from .line4_parser import parse_line4
+
+
+def load_any_aoi(file_path: str):
+    """
+    Detects which parser to use based on first header token order.
+    Assumes utf-16 text.
+    """
+    with open(file_path, encoding="utf-16") as f:
+        header = f.readline().strip().replace("\ufeff", "")
+
+    h = header.split()
+
+    # line4 starts with PCBID MachineID JobFileIDShare...
+    if len(h) >= 3 and h[0] == "PCBID" and h[1] == "MachineID":
+        return parse_line4(file_path)
+
+    # line2 starts with StartDateTime JobFileIDShare AllBarCode...
+    if len(h) >= 3 and h[0] == "StartDateTime" and "AllBarCode" in h[:5]:
+        return parse_line2(file_path)
+
+    # line1 starts with BarCode AllBarCode JobFileIDShare...
+    if len(h) >= 2 and h[0] == "BarCode" and h[1] == "AllBarCode":
+        return parse_line1(file_path)
+
+    raise ValueError(f"Unknown AOI format header: {header[:120]}")

@@ -1,0 +1,11 @@
+Defect,Count
+(OCROCV),3966
+Coplanarity,2558
+PadOverhang,927
+Solderfillet,607
+Part(Dimen.),447
+Polarity,285
+Foreignmaterial,262
+UpsideDown,163
+Missing,67
+Bridging,1
