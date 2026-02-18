@@ -1,23 +1,50 @@
 import os
+import sys
 import sqlite3
+import shutil
 from pathlib import Path
 from typing import Optional, List, Dict
 
 
-def get_db_path() -> str:
-    """
-    Persistent per-user DB path so logs survive packaging and restarts.
-    Windows: %APPDATA%\\AOI_Analytics\\aoi_logs.db
-    Others:  ~/.aoi_analytics/aoi_logs.db
-    """
+def _legacy_appdata_db_path() -> Path:
+    # OLD location you previously used
     if os.name == "nt":
         base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
         folder = Path(base) / "AOI_Analytics"
-    else:
-        folder = Path.home() / ".aoi_analytics"
+        return folder / "aoi_logs.db"
+    return Path.home() / ".aoi_analytics" / "aoi_logs.db"
 
+
+def _portable_app_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(os.path.dirname(sys.executable))
+    return Path(__file__).resolve().parent.parent
+
+
+def get_db_path() -> str:
+    """
+    Portable DB:
+      - Packaged EXE: <EXE_FOLDER>/aoi_logs.db
+      - Source run:   <PROJECT_ROOT>/aoi_logs.db
+
+    Migration:
+      - If portable DB doesn't exist but legacy APPDATA DB exists -> copy it once.
+    """
+    folder = _portable_app_dir()
     folder.mkdir(parents=True, exist_ok=True)
-    return str(folder / "aoi_logs.db")
+
+    new_path = folder / "aoi_logs.db"
+    legacy = _legacy_appdata_db_path()
+
+    # ✅ one-time migration/copy so old logs are not lost
+    try:
+        if (not new_path.exists()) and legacy.exists():
+            shutil.copy2(str(legacy), str(new_path))
+    except Exception:
+        # never block app start if copy fails
+        pass
+
+    return str(new_path)
 
 
 def _connect():
@@ -41,10 +68,8 @@ def init_db():
             total_rows INTEGER,
             pcbs_flagged INTEGER,
 
-            -- ✅ NEW: manual total checked
             pcbs_checked INTEGER,
 
-            -- kept for backward compatibility; you can ignore it now
             ratio_rows_per_pcb REAL,
 
             source_file_name TEXT,
@@ -55,11 +80,11 @@ def init_db():
         """
     )
 
-    # ✅ migration (existing DBs)
+    # migration for older DBs
     try:
         cur.execute("ALTER TABLE daily_logs ADD COLUMN pcbs_checked INTEGER")
     except sqlite3.OperationalError:
-        pass  # already exists
+        pass
 
     con.commit()
     con.close()
@@ -68,10 +93,7 @@ def init_db():
 def log_exists(log_date: str, line: str) -> bool:
     con = _connect()
     cur = con.cursor()
-    cur.execute(
-        "SELECT 1 FROM daily_logs WHERE log_date=? AND line=? LIMIT 1",
-        (log_date, line),
-    )
+    cur.execute("SELECT 1 FROM daily_logs WHERE log_date=? AND line=? LIMIT 1", (log_date, line))
     row = cur.fetchone()
     con.close()
     return row is not None
@@ -104,10 +126,7 @@ def upsert_log(
     cur = con.cursor()
 
     if replace:
-        cur.execute(
-            "DELETE FROM daily_logs WHERE log_date=? AND line=?",
-            (log_date, line),
-        )
+        cur.execute("DELETE FROM daily_logs WHERE log_date=? AND line=?", (log_date, line))
 
     cur.execute(
         """
@@ -135,11 +154,6 @@ def upsert_log(
 
 
 def fetch_pcbs_flagged_trend(line: str, start_date: str, end_date: str) -> List[Dict]:
-    """
-    Returns list of dicts:
-      [{"log_date": "YYYY-MM-DD", "pcbs_flagged": 123, "pcbs_checked": 1000}, ...]
-    Inclusive range: start_date <= log_date <= end_date
-    """
     con = _connect()
     cur = con.cursor()
     cur.execute(

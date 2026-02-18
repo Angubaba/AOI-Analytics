@@ -1,6 +1,6 @@
 # src/plots.py
 import matplotlib
-matplotlib.use("Agg")  # ✅ important: avoids GUI/thread issues
+matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -11,7 +11,6 @@ def _save_or_blank(fig, out_path: str, title: str, msg: str = "No data"):
     ax.set_title(title, fontsize=16, fontweight="bold")
     ax.text(0.5, 0.5, msg, ha="center", va="center", fontsize=16)
     ax.axis("off")
-    # ✅ avoid tight_layout warnings
     try:
         fig.subplots_adjust(left=0.08, right=0.98, bottom=0.18, top=0.90)
     except Exception:
@@ -21,10 +20,6 @@ def _save_or_blank(fig, out_path: str, title: str, msg: str = "No data"):
 
 
 def plot_top_defects_bars(defects_df, out_path, title="Top defect types flagged by AOI (event rows)"):
-    """
-    defects_df columns expected: Defect, Count
-    High-quality PNG + larger labels/values.
-    """
     if defects_df is None or defects_df.empty:
         fig = plt.figure(figsize=(12.5, 5.6), dpi=260)
         _save_or_blank(fig, out_path, title)
@@ -49,23 +44,23 @@ def plot_top_defects_bars(defects_df, out_path, title="Top defect types flagged 
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=40, ha="right", fontsize=11)
 
-    ymax = max(counts) if counts else 0
-    pad = max(2, int(ymax * 0.02))
+    ymax = float(max(counts)) if counts else 0.0
+    ax.set_ylim(0, max(1.0, ymax * 1.35 + 0.5))
+    pad = max(0.05 * ymax, 0.12) if ymax > 0 else 0.12
 
-    # ✅ bigger numbers on bars
     for b, v in zip(bars, counts):
         ax.text(
             b.get_x() + b.get_width() / 2,
-            v + pad,
+            float(v) + pad,
             f"{v}",
             ha="center",
             va="bottom",
             fontsize=14,
-            fontweight="bold"
+            fontweight="bold",
+            clip_on=True,
         )
 
     ax.margins(y=0.20)
-    # ✅ avoid tight_layout warnings
     try:
         fig.subplots_adjust(left=0.08, right=0.98, bottom=0.22, top=0.90)
     except Exception:
@@ -81,10 +76,6 @@ def plot_time_series_counts_bar(
     y_label="Unique PCBIDs flagged",
     grain="hour"
 ):
-    """
-    ts_df columns expected: TimeTS, Count
-    High-quality PNG + larger labels/values.
-    """
     if ts_df is None or ts_df.empty:
         fig = plt.figure(figsize=(12.5, 5.4), dpi=260)
         _save_or_blank(fig, out_path, title)
@@ -98,7 +89,6 @@ def plot_time_series_counts_bar(
     times = ts_df["TimeTS"].tolist()
     counts = ts_df["Count"].astype(int).tolist()
 
-    # readable x labels
     if grain == "hour":
         xlabels = [t.strftime("%d-%b %H:%M") if hasattr(t, "strftime") else str(t) for t in times]
         xlabel = "Hour"
@@ -115,29 +105,32 @@ def plot_time_series_counts_bar(
     ax.set_xlabel(xlabel, fontsize=13)
 
     ax.set_xticks(range(len(xlabels)))
-    ax.set_xticklabels(xlabels, rotation=40, ha="right", fontsize=11)
 
-    ymax = max(counts) if counts else 0
+    # keep readable: show fewer labels if too many
+    if len(xlabels) <= 28:
+        ax.set_xticklabels(xlabels, rotation=40, ha="right", fontsize=11)
+    else:
+        step = max(1, len(xlabels) // 18)
+        shown = [lbl if (i % step == 0) else "" for i, lbl in enumerate(xlabels)]
+        ax.set_xticklabels(shown, rotation=40, ha="right", fontsize=11)
 
-    # ✅ add headroom (helps tiny-bar days + labels)
-    ax.set_ylim(0, max(1, int(ymax * 1.25) + 1))
-
-    pad = max(2, int((ymax if ymax else 1) * 0.02))
+    ymax = float(max(counts)) if counts else 0.0
+    ax.set_ylim(0, max(1.0, ymax * 1.35 + 0.5))
+    pad = max(0.05 * ymax, 0.12) if ymax > 0 else 0.12
 
     for b, v in zip(bars, counts):
         ax.text(
             b.get_x() + b.get_width() / 2,
-            v + pad,
+            float(v) + pad,
             f"{v}",
             ha="center",
             va="bottom",
             fontsize=14,
-            fontweight="bold"
+            fontweight="bold",
+            clip_on=True,
         )
 
     ax.margins(y=0.20)
-
-    # ✅ avoid tight_layout warnings (especially hourly view)
     try:
         fig.subplots_adjust(left=0.08, right=0.98, bottom=0.22, top=0.90)
     except Exception:
@@ -146,15 +139,90 @@ def plot_time_series_counts_bar(
     plt.close(fig)
 
 
-def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs flagged trend"):
+def plot_pcbs_flagged_by_minute(
+    ts_df: pd.DataFrame,
+    out_path: str,
+    title: str = "PCBs flagged per Minute",
+    y_label: str = "Unique PCBIDs flagged"
+):
     """
-    df columns required: log_date (YYYY-MM-DD), pcbs_flagged (int)
-    Optional: pcbs_checked (int)  -> plotted in RED behind BLUE flagged bars
+    Strict 0–60 minute axis:
+      - Always spans 60 minutes (00..59).
+      - Bars are drawn only where Count > 0 (zero minutes show no bar).
+    """
+    if ts_df is None or ts_df.empty:
+        fig = plt.figure(figsize=(12.5, 5.4), dpi=260)
+        _save_or_blank(fig, out_path, title, msg="No data in this hour")
+        return
 
-    ✅ For small blue bars: move label above bar
-    ✅ If small day AND checked > flagged: show "flagged/checked" above (single label)
-    ✅ Avoid label overlaps
-    """
+    if not {"TimeTS", "Count"}.issubset(set(ts_df.columns)):
+        fig = plt.figure(figsize=(12.5, 5.4), dpi=260)
+        _save_or_blank(fig, out_path, title, msg="Bad data format")
+        return
+
+    d = ts_df.copy()
+    d["Count"] = pd.to_numeric(d["Count"], errors="coerce").fillna(0).astype(int)
+    d = d.sort_values("TimeTS")
+
+    # minute index 0..59 based on position in hour
+    times = d["TimeTS"].tolist()
+    if not times:
+        fig = plt.figure(figsize=(12.5, 5.4), dpi=260)
+        _save_or_blank(fig, out_path, title, msg="No data")
+        return
+
+    start = pd.Timestamp(times[0]).floor("h")
+    d["m"] = (pd.to_datetime(d["TimeTS"]) - start).dt.total_seconds().div(60).astype(int)
+
+    # keep only 0..59
+    d = d[(d["m"] >= 0) & (d["m"] <= 59)].copy()
+
+    fig = plt.figure(figsize=(13.0, 5.8), dpi=260)
+    ax = plt.gca()
+
+    # draw only nonzero bars
+    dnz = d[d["Count"] > 0]
+    ax.bar(dnz["m"].tolist(), dnz["Count"].tolist())
+
+    ax.set_title(title, fontsize=16, fontweight="bold")
+    ax.set_ylabel(y_label, fontsize=13)
+    ax.set_xlabel("Minute (0–60)", fontsize=13)
+
+    ax.set_xlim(-0.5, 59.5)
+
+    # ticks every 5 minutes
+    ticks = list(range(0, 60, 5))
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([f"{t:02d}" for t in ticks], fontsize=10)
+
+    ymax = float(d["Count"].max()) if len(d) else 0.0
+    ax.set_ylim(0, max(1.0, ymax * 1.35 + 0.5))
+    pad = max(0.05 * ymax, 0.12) if ymax > 0 else 0.12
+
+    # labels only for nonzero bars
+    for m, v in zip(dnz["m"].tolist(), dnz["Count"].tolist()):
+        ax.text(
+            m,
+            float(v) + pad,
+            f"{int(v)}",
+            ha="center",
+            va="bottom",
+            fontsize=12,
+            fontweight="bold",
+            clip_on=True,
+        )
+
+    ax.margins(y=0.20)
+    try:
+        fig.subplots_adjust(left=0.08, right=0.98, bottom=0.18, top=0.90)
+    except Exception:
+        pass
+    fig.savefig(out_path, dpi=260, bbox_inches="tight", pad_inches=0.15)
+    plt.close(fig)
+
+
+def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs flagged trend"):
+    # (UNCHANGED from your current version)
     fig = plt.figure(figsize=(13.0, 5.2), dpi=260)
     ax = fig.add_subplot(111)
 
@@ -194,16 +262,12 @@ def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs 
     ax.tick_params(axis="y", labelsize=11)
 
     ymax = max(y_flagged) if y_flagged else 0
-
-    # threshold to decide "small bar" (relative)
-    # if bar height < 12% of ymax, treat as small
     SMALL_FRAC = 0.12
     small_thresh = max(1, int(ymax * SMALL_FRAC)) if ymax else 1
 
     def _is_small(v: int) -> bool:
         return v < small_thresh
 
-    # ---- Checked (red behind) + Flagged (blue front) ----
     if has_checked:
         y_checked = []
         for v in d["pcbs_checked"].tolist():
@@ -217,7 +281,6 @@ def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs 
             if chk > flg:
                 any_red = True
 
-        # recompute after ymax updated
         small_thresh = max(1, int(ymax * SMALL_FRAC)) if ymax else 1
 
         if any_red:
@@ -231,20 +294,17 @@ def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs 
             )
 
         bars_blue = ax.bar(x, y_flagged, color="blue", alpha=0.90, zorder=2, label="Flagged")
+        pad = max(0.05 * (ymax if ymax else 1), 0.12)
 
-        pad = max(2, int((ymax if ymax else 1) * 0.02))
-
-        # 1) Flagged labels: inside if big, above if small
         for i, (bar, flg) in enumerate(zip(bars_blue, y_flagged)):
             if flg <= 0:
                 ax.text(i, 0 + pad, "0",
                         ha="center", va="bottom",
                         fontsize=12, fontweight="bold",
-                        color="black", zorder=3)
+                        color="black", zorder=3, clip_on=True)
                 continue
 
             if _is_small(flg):
-                # put above blue bar for small bars
                 ax.text(
                     bar.get_x() + bar.get_width() / 2,
                     flg + pad,
@@ -252,10 +312,10 @@ def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs 
                     ha="center", va="bottom",
                     fontsize=12, fontweight="bold",
                     color="black",
-                    zorder=3
+                    zorder=3,
+                    clip_on=True
                 )
             else:
-                # inside blue bar
                 ax.text(
                     bar.get_x() + bar.get_width() / 2,
                     flg / 2,
@@ -266,14 +326,11 @@ def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs 
                     zorder=3
                 )
 
-        # 2) Checked labels: only when checked > flagged
-        #    If flagged bar is SMALL on that day, show combined "flagged/checked" above (single label)
         for i, (chk, flg) in enumerate(zip(y_checked, y_flagged)):
             if chk is None:
                 continue
             if chk > flg:
                 if _is_small(flg):
-                    # combined label above the red bar
                     ax.text(
                         i,
                         chk + pad,
@@ -281,10 +338,10 @@ def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs 
                         ha="center", va="bottom",
                         fontsize=12, fontweight="bold",
                         color="black",
-                        zorder=3
+                        zorder=3,
+                        clip_on=True
                     )
                 else:
-                    # normal: show checked above red
                     ax.text(
                         i,
                         chk + pad,
@@ -292,25 +349,25 @@ def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs 
                         ha="center", va="bottom",
                         fontsize=12, fontweight="bold",
                         color="black",
-                        zorder=3
+                        zorder=3,
+                        clip_on=True
                     )
 
         if any_red:
             ax.legend(loc="upper left", fontsize=10)
 
-    # ---- Only flagged (blue) ----
     else:
         bars = ax.bar(x, y_flagged, color="blue", alpha=0.90, zorder=2)
         ymax = max(y_flagged) if y_flagged else 0
         small_thresh = max(1, int(ymax * SMALL_FRAC)) if ymax else 1
-        pad = max(2, int((ymax if ymax else 1) * 0.02))
+        pad = max(0.05 * (ymax if ymax else 1), 0.12)
 
         for i, (bar, flg) in enumerate(zip(bars, y_flagged)):
             if flg <= 0:
                 ax.text(i, 0 + pad, "0",
                         ha="center", va="bottom",
                         fontsize=12, fontweight="bold",
-                        color="black", zorder=3)
+                        color="black", zorder=3, clip_on=True)
                 continue
 
             if _is_small(flg):
@@ -321,7 +378,8 @@ def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs 
                     ha="center", va="bottom",
                     fontsize=12, fontweight="bold",
                     color="black",
-                    zorder=3
+                    zorder=3,
+                    clip_on=True
                 )
             else:
                 ax.text(
@@ -335,8 +393,6 @@ def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs 
                 )
 
     ax.margins(y=0.20)
-
-    # ✅ avoid tight_layout warnings
     try:
         fig.subplots_adjust(left=0.08, right=0.98, bottom=0.22, top=0.90)
     except Exception:
