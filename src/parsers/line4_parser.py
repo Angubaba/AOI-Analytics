@@ -1,18 +1,26 @@
 import re
 import pandas as pd
-from ._utils import _extract_uname_from_tokens
+from ._utils import _extract_uname_from_tokens, find_datetimes_in_tokens
 
-# Pre-compiled at module level — avoids recompiling inside per-row exception handler
+# Pre-compiled at module level
 _NUMERIC_RE = re.compile(r"\d{3,}")
-_DATE_RE    = re.compile(r"\d{2}-\d{2}-\d{4}")
-_TIME_RE    = re.compile(r"\d{2}:\d{2}:\d{2}")
 
 
 def parse_line4(file_path: str) -> pd.DataFrame:
     """
     Line4:
-    PCBID MachineID JobFileIDShare StartDateTime EndDateTime UserID ... AllBarCode
-    Start/End are dd-mm-yyyy HH:MM:SS (2 tokens each)
+    Typical layout: PCBID MachineID JobFileIDShare StartDateTime EndDateTime UserID ... AllBarCode
+
+    Field extraction is COLUMN-ORDER AGNOSTIC:
+      - PCBID:         first pure-numeric (3+ digit) token before .KYJOB
+      - MachineID:     other non-numeric, non-path token before .KYJOB (e.g. AL-SL-04527)
+      - JobFileIDShare: token(s) ending with .KYJOB
+      - StartDateTime: first date+time pattern in the full row
+      - EndDateTime:   second date+time pattern in the full row
+      - AllBarCode:    last non-datetime, non-kyjob, non-numeric token (heuristic)
+      - uname/TB:      token before TB marker (12 or 13)
+
+    Works even when PCBID and MachineID are swapped or other columns shift position.
     """
     rows = []
     try:
@@ -33,23 +41,48 @@ def parse_line4(file_path: str) -> pd.DataFrame:
             try:
                 tokens = line.split()
 
-                pcbid = tokens[0]
-                machine = tokens[1]
+                # ── .KYJOB anchor ──
+                kyjob_idx = next(
+                    i for i, t in enumerate(tokens) if t.endswith(".KYJOB")
+                )
+                jobfile = " ".join(tokens[2 : kyjob_idx + 1]).strip()
 
-                kyjob_idx = next(i for i, t in enumerate(tokens) if t.endswith(".KYJOB"))
-                jobfile = " ".join(tokens[2:kyjob_idx + 1]).strip()
+                # ── Tokens before KYJOB: find PCBID and MachineID ──
+                before = tokens[:kyjob_idx]
+                # PCBID: first pure-numeric (3+ digit) token
+                pcbid = next(
+                    (t for t in before if _NUMERIC_RE.fullmatch(t)), None
+                )
+                # MachineID: first non-numeric, non-path (no backslash) token before KYJOB
+                machine = next(
+                    (
+                        t for t in before
+                        if not _NUMERIC_RE.fullmatch(t)
+                        and "\\" not in t
+                        and re.search(r"[A-Za-z]", t)
+                    ),
+                    None,
+                )
 
-                rest = tokens[kyjob_idx + 1:]
-                start_raw = " ".join(rest[0:2])
-                end_raw = " ".join(rest[2:4])
+                # ── Datetimes: scan full row (position-independent) ──
+                dts = find_datetimes_in_tokens(tokens)
+                start_raw = dts[0][1] if len(dts) >= 1 else None
+                end_raw   = dts[1][1] if len(dts) >= 2 else None
 
-                after_dt = rest[4:]
+                # ── Build the "after datetimes" section for uname / AllBarCode ──
+                # Collect token indices consumed by the two datetimes and kyjob range
+                used = set()
+                for di, _, dn in dts[:2]:
+                    used.update(range(di, di + dn))
+                used.update(range(0, kyjob_idx + 1))
+
+                after = [t for i, t in enumerate(tokens) if i not in used]
 
                 # uname: token before TB (12/13)
-                uname_guess = _extract_uname_from_tokens(after_dt) or None
+                uname_guess = _extract_uname_from_tokens(after) or None
 
-                # AllBarCode usually last token (may contain commas, no spaces)
-                allbarcode = after_dt[-1] if after_dt else None
+                # AllBarCode: last token of the full row (heuristic for line4)
+                allbarcode = tokens[-1] if tokens else None
 
                 rows.append({
                     "PCBID": pcbid,
@@ -60,18 +93,21 @@ def parse_line4(file_path: str) -> pd.DataFrame:
                     "AllBarCode": allbarcode,
                     "uname": uname_guess,
                     "ParseOK": True,
-                    "ParseError": ""
+                    "ParseError": "",
                 })
 
             except Exception as e:
+                # Fallback: pure pattern scan — works on any column order
                 tokens = line.split()
-                pcbid_guess = next((t for t in tokens if _NUMERIC_RE.fullmatch(t)), None)
 
-                dt_guess = None
-                for i in range(len(tokens) - 1):
-                    if _DATE_RE.fullmatch(tokens[i]) and _TIME_RE.fullmatch(tokens[i + 1]):
-                        dt_guess = tokens[i] + " " + tokens[i + 1]
-                        break
+                # PCBID: first pure-numeric 3+ digit token
+                pcbid_guess = next(
+                    (t for t in tokens if _NUMERIC_RE.fullmatch(t)), None
+                )
+
+                # Datetime: first date+time pattern found
+                dts = find_datetimes_in_tokens(tokens)
+                dt_guess = dts[0][1] if dts else None
 
                 uname_guess = _extract_uname_from_tokens(tokens) or None
 
@@ -84,7 +120,7 @@ def parse_line4(file_path: str) -> pd.DataFrame:
                     "AllBarCode": None,
                     "uname": uname_guess,
                     "ParseOK": False,
-                    "ParseError": str(e)
+                    "ParseError": str(e),
                 })
 
     df = pd.DataFrame(rows)

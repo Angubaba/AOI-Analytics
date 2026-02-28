@@ -1,6 +1,6 @@
 import re
 import pandas as pd
-from ._utils import _extract_uname_from_tokens
+from ._utils import _extract_uname_from_tokens, find_datetimes_in_tokens
 
 # Pre-compiled at module level — avoids recompiling inside the per-token inner loop
 _NUMERIC_RE = re.compile(r"\d{3,}")
@@ -8,14 +8,19 @@ _NUMERIC_RE = re.compile(r"\d{3,}")
 
 def parse_line2(file_path: str) -> pd.DataFrame:
     """
-    Line-2 format (file extension is .csv but rows are whitespace-separated):
-    - StartDateTime is 3 tokens: YYYY-MM-DD h:mm:ss AM/PM
-    - JobFileIDShare may contain spaces; anchor ends at token ending with .KYJOB
-    - AllBarCode may contain spaces; it ends right before PCBID (first pure-numeric token)
-    - EndDateTime is 3 tokens: YYYY-MM-DD h:mm:ss AM/PM
+    Line-2 format (file extension is .csv but rows are whitespace-separated).
 
-    Output columns at minimum:
-      StartDateTime_raw, EndDateTime_raw, JobFileIDShare, AllBarCode, PCBID, MachineID, uname, TB
+    Field extraction is COLUMN-ORDER AGNOSTIC:
+      - StartDateTime: first date+time pattern found anywhere in the row
+      - EndDateTime:   second date+time pattern found anywhere in the row
+      - JobFileIDShare: token(s) ending with .KYJOB (anchor)
+      - AllBarCode:    tokens between .KYJOB and the first pure-numeric PCBID
+      - PCBID:         first pure-numeric (3+ digit) token after .KYJOB
+      - MachineID:     token immediately after PCBID (best-effort)
+      - uname/TB:      token before TB marker (12 or 13)
+
+    Compatible with both the original "21 2r" layout and any variant where
+    StartDateTime does not start at column 0.
     """
     rows = []
     skipped = 0
@@ -28,7 +33,6 @@ def parse_line2(file_path: str) -> pd.DataFrame:
         try:
             with open(file_path, "r", encoding=enc) as f:
                 header = f.readline().strip().replace("\ufeff", "")
-                # header is whitespace-separated, not comma-separated
                 if not header:
                     raise ValueError("Empty header")
 
@@ -38,36 +42,49 @@ def parse_line2(file_path: str) -> pd.DataFrame:
                         continue
 
                     tokens = line.split()
-                    if len(tokens) < 10:
+                    if len(tokens) < 6:
                         skipped += 1
                         continue
 
-                    # StartDateTime is 3 tokens: date time AM/PM
-                    # Example: 2026-01-19 7:52:56 AM
-                    if len(tokens) < 4:
+                    # ── StartDateTime: first date+time pattern (position-independent) ──
+                    dts = find_datetimes_in_tokens(tokens)
+                    if not dts:
                         skipped += 1
                         continue
-                    start_raw = " ".join(tokens[0:3])
+                    start_raw = dts[0][1]
 
-                    # Find end of jobfile (token ending with .KYJOB)
+                    # ── .KYJOB anchor ──
                     try:
-                        kyjob_idx = next(i for i, t in enumerate(tokens) if t.upper().endswith(".KYJOB"))
+                        kyjob_idx = next(
+                            i for i, t in enumerate(tokens)
+                            if t.upper().endswith(".KYJOB")
+                        )
                     except StopIteration:
                         skipped += 1
                         continue
 
-                    # JobFileIDShare starts after StartDateTime tokens (index 3) up to kyjob_idx inclusive
-                    if kyjob_idx < 3:
+                    # JobFileIDShare: tokens from after StartDateTime up to .KYJOB
+                    # (handles multi-token paths with spaces)
+                    job_file = tokens[kyjob_idx]
+                    # Scan backward for path fragments that belong to the job path
+                    start_j = kyjob_idx
+                    while (
+                        start_j > 0
+                        and (
+                            tokens[start_j - 1].startswith("\\")
+                            or "\\" in tokens[start_j - 1]
+                        )
+                    ):
+                        start_j -= 1
+                    job_file = " ".join(tokens[start_j : kyjob_idx + 1])
+
+                    # ── Everything after .KYJOB ──
+                    rest = tokens[kyjob_idx + 1 :]
+                    if len(rest) < 2:
                         skipped += 1
                         continue
-                    job_file = " ".join(tokens[3:kyjob_idx + 1])
 
-                    rest = tokens[kyjob_idx + 1:]
-                    if len(rest) < 4:
-                        skipped += 1
-                        continue
-
-                    # PCBID is the first *pure numeric* token after AllBarCode
+                    # PCBID: first pure-numeric (3+ digit) token in rest
                     pcbid_pos = None
                     for i, t in enumerate(rest):
                         if _NUMERIC_RE.fullmatch(t):
@@ -77,21 +94,25 @@ def parse_line2(file_path: str) -> pd.DataFrame:
                         skipped += 1
                         continue
 
+                    # AllBarCode: everything between .KYJOB and PCBID
+                    # (may be multi-word if the barcode contains spaces)
                     allbarcode = " ".join(rest[:pcbid_pos]).strip()
                     pcbid = rest[pcbid_pos]
 
-                    # MachineID follows PCBID
+                    # MachineID: token right after PCBID (best-effort)
                     machine = rest[pcbid_pos + 1] if pcbid_pos + 1 < len(rest) else ""
 
-                    # EndDateTime is next 3 tokens after MachineID
+                    # EndDateTime: second datetime pattern found in the full line,
+                    # or fall back to positional extraction from rest
                     end_raw = ""
-                    if pcbid_pos + 4 < len(rest):
-                        end_raw = " ".join(rest[pcbid_pos + 2:pcbid_pos + 5])
+                    if len(dts) >= 2:
+                        end_raw = dts[1][1]
+                    elif pcbid_pos + 4 < len(rest):
+                        end_raw = " ".join(rest[pcbid_pos + 2 : pcbid_pos + 5])
 
-                    # After end datetime, there are many fields, but may have blanks (multiple spaces)
-                    tail = rest[pcbid_pos + 5:] if pcbid_pos + 5 < len(rest) else []
+                    # Tail after MachineID: used for TB / uname
+                    tail = rest[pcbid_pos + 2 :] if pcbid_pos + 2 < len(rest) else []
 
-                    # uname extraction: anchor TB (12 or 13). uname is token right before TB.
                     tb = next((t for t in tail if t in ("12", "13")), None)
                     uname = _extract_uname_from_tokens(tail)
 
@@ -112,6 +133,8 @@ def parse_line2(file_path: str) -> pd.DataFrame:
 
         except Exception as e:
             last_err = e
+            rows = []
+            skipped = 0
             continue
 
     raise RuntimeError(f"Line2 parser failed for all encodings. Last error: {last_err}")
