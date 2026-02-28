@@ -1,3 +1,3 @@
-from .auto import load_any_aoi  # or wherever it is defined
+from .auto import load_any_aoi
 
 __all__ = ["load_any_aoi"]

@@ -31,10 +31,15 @@ def parse_line1(file_path: str, encoding: str = "utf-16") -> pd.DataFrame:
     """
     rows = []
 
-    with open(file_path, "r", encoding=encoding, errors="ignore") as f:
-        _ = f.readline()  # header
+    try:
+        fh = open(file_path, "r", encoding=encoding, errors="ignore")
+    except (FileNotFoundError, PermissionError, OSError) as e:
+        raise IOError(f"Line1 parser cannot open file: {file_path!r} — {e}") from e
 
-        for raw in f:
+    with fh:
+        _ = fh.readline()  # header
+
+        for raw in fh:
             line = raw.strip().strip('"')
             if not line:
                 continue

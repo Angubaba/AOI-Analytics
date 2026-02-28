@@ -5,35 +5,85 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
+# ---------------------------------------------------------------------------
+# Module-level plot constants — single source of truth for all chart styling
+# ---------------------------------------------------------------------------
+_FIG_W       = 13.0
+_FIG_H       = 5.8
+_FIG_H_BLANK = 5.4   # used for empty/error figures
+_FIG_H_TREND = 5.2
+_DPI         = 260
+_MARGINS      = dict(left=0.08, right=0.98, bottom=0.22, top=0.90)
+_MARGINS_BLANK = dict(left=0.08, right=0.98, bottom=0.18, top=0.90)
+_SAVE_KW     = dict(dpi=_DPI)  # exact figsize margins — no tight-crop distortion (keeps click mapping accurate)
+
+
+def _apply_margins(fig, margins: dict):
+    try:
+        fig.subplots_adjust(**margins)
+    except (ValueError, TypeError):
+        pass
+
+
+def _label_bars(ax, bars, counts, pad, fontsize=14):
+    """Draw count labels above each bar."""
+    for b, v in zip(bars, counts):
+        ax.text(
+            b.get_x() + b.get_width() / 2,
+            float(v) + pad,
+            f"{v}",
+            ha="center", va="bottom",
+            fontsize=fontsize, fontweight="bold",
+            clip_on=True,
+        )
+
+
+def _annotate_trend_bar(ax, i, bar, flg: int, pad: float, is_small: bool):
+    """Label a single trend bar — above if small, centred inside if large."""
+    if flg <= 0:
+        ax.text(i, pad, "0",
+                ha="center", va="bottom",
+                fontsize=12, fontweight="bold",
+                color="black", zorder=3, clip_on=True)
+    elif is_small:
+        ax.text(bar.get_x() + bar.get_width() / 2, flg + pad,
+                str(int(flg)),
+                ha="center", va="bottom",
+                fontsize=12, fontweight="bold",
+                color="black", zorder=3, clip_on=True)
+    else:
+        ax.text(bar.get_x() + bar.get_width() / 2, flg / 2,
+                str(int(flg)),
+                ha="center", va="center",
+                fontsize=13, fontweight="bold",
+                color="white", zorder=3)
+
 
 def _save_or_blank(fig, out_path: str, title: str, msg: str = "No data"):
     ax = fig.gca()
     ax.set_title(title, fontsize=16, fontweight="bold")
     ax.text(0.5, 0.5, msg, ha="center", va="center", fontsize=16)
     ax.axis("off")
-    try:
-        fig.subplots_adjust(left=0.08, right=0.98, bottom=0.18, top=0.90)
-    except Exception:
-        pass
-    fig.savefig(out_path, dpi=260, bbox_inches="tight", pad_inches=0.15)
+    _apply_margins(fig, _MARGINS_BLANK)
+    fig.savefig(out_path, **_SAVE_KW)
     plt.close(fig)
 
 
 def plot_top_defects_bars(defects_df, out_path, title="Top defect types flagged by AOI (event rows)"):
     if defects_df is None or defects_df.empty:
-        fig = plt.figure(figsize=(12.5, 5.6), dpi=260)
+        fig = plt.figure(figsize=(_FIG_W, _FIG_H_BLANK), dpi=_DPI)
         _save_or_blank(fig, out_path, title)
         return
 
     if not {"Defect", "Count"}.issubset(set(defects_df.columns)):
-        fig = plt.figure(figsize=(12.5, 5.6), dpi=260)
+        fig = plt.figure(figsize=(_FIG_W, _FIG_H_BLANK), dpi=_DPI)
         _save_or_blank(fig, out_path, title, msg="Bad data format")
         return
 
     labels = defects_df["Defect"].astype(str).tolist()
     counts = defects_df["Count"].astype(int).tolist()
 
-    fig = plt.figure(figsize=(13.0, 5.8), dpi=260)
+    fig = plt.figure(figsize=(_FIG_W, _FIG_H), dpi=_DPI)
     ax = plt.gca()
 
     bars = ax.bar(range(len(labels)), counts)
@@ -48,24 +98,11 @@ def plot_top_defects_bars(defects_df, out_path, title="Top defect types flagged 
     ax.set_ylim(0, max(1.0, ymax * 1.35 + 0.5))
     pad = max(0.05 * ymax, 0.12) if ymax > 0 else 0.12
 
-    for b, v in zip(bars, counts):
-        ax.text(
-            b.get_x() + b.get_width() / 2,
-            float(v) + pad,
-            f"{v}",
-            ha="center",
-            va="bottom",
-            fontsize=14,
-            fontweight="bold",
-            clip_on=True,
-        )
+    _label_bars(ax, bars, counts, pad, fontsize=14)
 
     ax.margins(y=0.20)
-    try:
-        fig.subplots_adjust(left=0.08, right=0.98, bottom=0.22, top=0.90)
-    except Exception:
-        pass
-    fig.savefig(out_path, dpi=260, bbox_inches="tight", pad_inches=0.15)
+    _apply_margins(fig, _MARGINS)
+    fig.savefig(out_path, **_SAVE_KW)
     plt.close(fig)
 
 
@@ -77,12 +114,12 @@ def plot_time_series_counts_bar(
     grain="hour"
 ):
     if ts_df is None or ts_df.empty:
-        fig = plt.figure(figsize=(12.5, 5.4), dpi=260)
+        fig = plt.figure(figsize=(_FIG_W, _FIG_H_BLANK), dpi=_DPI)
         _save_or_blank(fig, out_path, title)
         return
 
     if not {"TimeTS", "Count"}.issubset(set(ts_df.columns)):
-        fig = plt.figure(figsize=(12.5, 5.4), dpi=260)
+        fig = plt.figure(figsize=(_FIG_W, _FIG_H_BLANK), dpi=_DPI)
         _save_or_blank(fig, out_path, title, msg="Bad data format")
         return
 
@@ -96,7 +133,7 @@ def plot_time_series_counts_bar(
         xlabels = [t.strftime("%d-%b") if hasattr(t, "strftime") else str(t) for t in times]
         xlabel = "Day"
 
-    fig = plt.figure(figsize=(13.0, 5.8), dpi=260)
+    fig = plt.figure(figsize=(_FIG_W, _FIG_H), dpi=_DPI)
     ax = plt.gca()
 
     bars = ax.bar(range(len(xlabels)), counts)
@@ -118,24 +155,11 @@ def plot_time_series_counts_bar(
     ax.set_ylim(0, max(1.0, ymax * 1.35 + 0.5))
     pad = max(0.05 * ymax, 0.12) if ymax > 0 else 0.12
 
-    for b, v in zip(bars, counts):
-        ax.text(
-            b.get_x() + b.get_width() / 2,
-            float(v) + pad,
-            f"{v}",
-            ha="center",
-            va="bottom",
-            fontsize=14,
-            fontweight="bold",
-            clip_on=True,
-        )
+    _label_bars(ax, bars, counts, pad, fontsize=14)
 
     ax.margins(y=0.20)
-    try:
-        fig.subplots_adjust(left=0.08, right=0.98, bottom=0.22, top=0.90)
-    except Exception:
-        pass
-    fig.savefig(out_path, dpi=260, bbox_inches="tight", pad_inches=0.15)
+    _apply_margins(fig, _MARGINS)
+    fig.savefig(out_path, **_SAVE_KW)
     plt.close(fig)
 
 
@@ -151,12 +175,12 @@ def plot_pcbs_flagged_by_minute(
       - Bars are drawn only where Count > 0 (zero minutes show no bar).
     """
     if ts_df is None or ts_df.empty:
-        fig = plt.figure(figsize=(12.5, 5.4), dpi=260)
+        fig = plt.figure(figsize=(_FIG_W, _FIG_H_BLANK), dpi=_DPI)
         _save_or_blank(fig, out_path, title, msg="No data in this hour")
         return
 
     if not {"TimeTS", "Count"}.issubset(set(ts_df.columns)):
-        fig = plt.figure(figsize=(12.5, 5.4), dpi=260)
+        fig = plt.figure(figsize=(_FIG_W, _FIG_H_BLANK), dpi=_DPI)
         _save_or_blank(fig, out_path, title, msg="Bad data format")
         return
 
@@ -164,10 +188,9 @@ def plot_pcbs_flagged_by_minute(
     d["Count"] = pd.to_numeric(d["Count"], errors="coerce").fillna(0).astype(int)
     d = d.sort_values("TimeTS")
 
-    # minute index 0..59 based on position in hour
     times = d["TimeTS"].tolist()
     if not times:
-        fig = plt.figure(figsize=(12.5, 5.4), dpi=260)
+        fig = plt.figure(figsize=(_FIG_W, _FIG_H_BLANK), dpi=_DPI)
         _save_or_blank(fig, out_path, title, msg="No data")
         return
 
@@ -177,7 +200,7 @@ def plot_pcbs_flagged_by_minute(
     # keep only 0..59
     d = d[(d["m"] >= 0) & (d["m"] <= 59)].copy()
 
-    fig = plt.figure(figsize=(13.0, 5.8), dpi=260)
+    fig = plt.figure(figsize=(_FIG_W, _FIG_H), dpi=_DPI)
     ax = plt.gca()
 
     # draw only nonzero bars
@@ -199,31 +222,23 @@ def plot_pcbs_flagged_by_minute(
     ax.set_ylim(0, max(1.0, ymax * 1.35 + 0.5))
     pad = max(0.05 * ymax, 0.12) if ymax > 0 else 0.12
 
-    # labels only for nonzero bars
+    # labels only for nonzero bars (x is minute index, not bar object)
     for m, v in zip(dnz["m"].tolist(), dnz["Count"].tolist()):
         ax.text(
-            m,
-            float(v) + pad,
-            f"{int(v)}",
-            ha="center",
-            va="bottom",
-            fontsize=12,
-            fontweight="bold",
+            m, float(v) + pad, f"{int(v)}",
+            ha="center", va="bottom",
+            fontsize=12, fontweight="bold",
             clip_on=True,
         )
 
     ax.margins(y=0.20)
-    try:
-        fig.subplots_adjust(left=0.08, right=0.98, bottom=0.18, top=0.90)
-    except Exception:
-        pass
-    fig.savefig(out_path, dpi=260, bbox_inches="tight", pad_inches=0.15)
+    _apply_margins(fig, dict(left=0.08, right=0.98, bottom=0.18, top=0.90))
+    fig.savefig(out_path, **_SAVE_KW)
     plt.close(fig)
 
 
 def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs flagged trend"):
-    # (UNCHANGED from your current version)
-    fig = plt.figure(figsize=(13.0, 5.2), dpi=260)
+    fig = plt.figure(figsize=(_FIG_W, _FIG_H_TREND), dpi=_DPI)
     ax = fig.add_subplot(111)
 
     if df is None or df.empty:
@@ -265,9 +280,6 @@ def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs 
     SMALL_FRAC = 0.12
     small_thresh = max(1, int(ymax * SMALL_FRAC)) if ymax else 1
 
-    def _is_small(v: int) -> bool:
-        return v < small_thresh
-
     if has_checked:
         y_checked = []
         for v in d["pcbs_checked"].tolist():
@@ -282,76 +294,30 @@ def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs 
                 any_red = True
 
         small_thresh = max(1, int(ymax * SMALL_FRAC)) if ymax else 1
-
-        if any_red:
-            ax.bar(
-                x,
-                [0 if v is None else v for v in y_checked],
-                color="red",
-                alpha=0.35,
-                zorder=1,
-                label="Checked"
-            )
-
-        bars_blue = ax.bar(x, y_flagged, color="blue", alpha=0.90, zorder=2, label="Flagged")
         pad = max(0.05 * (ymax if ymax else 1), 0.12)
 
+        if any_red:
+            ax.bar(x, [0 if v is None else v for v in y_checked],
+                   color="red", alpha=0.35, zorder=1, label="Checked")
+
+        bars_blue = ax.bar(x, y_flagged, color="blue", alpha=0.90, zorder=2, label="Flagged")
+
         for i, (bar, flg) in enumerate(zip(bars_blue, y_flagged)):
-            if flg <= 0:
-                ax.text(i, 0 + pad, "0",
+            _annotate_trend_bar(ax, i, bar, flg, pad, flg < small_thresh)
+
+        for i, (chk, flg) in enumerate(zip(y_checked, y_flagged)):
+            if chk is None or chk <= flg:
+                continue
+            if flg < small_thresh:
+                ax.text(i, chk + pad, f"{int(flg)}/{int(chk)}",
                         ha="center", va="bottom",
                         fontsize=12, fontweight="bold",
                         color="black", zorder=3, clip_on=True)
-                continue
-
-            if _is_small(flg):
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    flg + pad,
-                    str(int(flg)),
-                    ha="center", va="bottom",
-                    fontsize=12, fontweight="bold",
-                    color="black",
-                    zorder=3,
-                    clip_on=True
-                )
             else:
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    flg / 2,
-                    str(int(flg)),
-                    ha="center", va="center",
-                    fontsize=13, fontweight="bold",
-                    color="white",
-                    zorder=3
-                )
-
-        for i, (chk, flg) in enumerate(zip(y_checked, y_flagged)):
-            if chk is None:
-                continue
-            if chk > flg:
-                if _is_small(flg):
-                    ax.text(
-                        i,
-                        chk + pad,
-                        f"{int(flg)}/{int(chk)}",
+                ax.text(i, chk + pad, str(int(chk)),
                         ha="center", va="bottom",
                         fontsize=12, fontweight="bold",
-                        color="black",
-                        zorder=3,
-                        clip_on=True
-                    )
-                else:
-                    ax.text(
-                        i,
-                        chk + pad,
-                        str(int(chk)),
-                        ha="center", va="bottom",
-                        fontsize=12, fontweight="bold",
-                        color="black",
-                        zorder=3,
-                        clip_on=True
-                    )
+                        color="black", zorder=3, clip_on=True)
 
         if any_red:
             ax.legend(loc="upper left", fontsize=10)
@@ -363,39 +329,9 @@ def plot_pcbs_flagged_trend(df: pd.DataFrame, out_path: str, title: str = "PCBs 
         pad = max(0.05 * (ymax if ymax else 1), 0.12)
 
         for i, (bar, flg) in enumerate(zip(bars, y_flagged)):
-            if flg <= 0:
-                ax.text(i, 0 + pad, "0",
-                        ha="center", va="bottom",
-                        fontsize=12, fontweight="bold",
-                        color="black", zorder=3, clip_on=True)
-                continue
-
-            if _is_small(flg):
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    flg + pad,
-                    str(int(flg)),
-                    ha="center", va="bottom",
-                    fontsize=12, fontweight="bold",
-                    color="black",
-                    zorder=3,
-                    clip_on=True
-                )
-            else:
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    flg / 2,
-                    str(int(flg)),
-                    ha="center", va="center",
-                    fontsize=13, fontweight="bold",
-                    color="white",
-                    zorder=3
-                )
+            _annotate_trend_bar(ax, i, bar, flg, pad, flg < small_thresh)
 
     ax.margins(y=0.20)
-    try:
-        fig.subplots_adjust(left=0.08, right=0.98, bottom=0.22, top=0.90)
-    except Exception:
-        pass
-    fig.savefig(out_path, dpi=260, bbox_inches="tight", pad_inches=0.15)
+    _apply_margins(fig, _MARGINS)
+    fig.savefig(out_path, **_SAVE_KW)
     plt.close(fig)

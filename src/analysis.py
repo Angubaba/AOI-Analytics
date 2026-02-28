@@ -3,6 +3,11 @@ import os
 import re
 import pandas as pd
 
+# Module-level constants — avoids recompiling on every function call
+_UNKNOWN   = "UNKNOWN_CARD"
+_ALPHA_RE  = re.compile(r"[A-Za-z]")
+_CARD_RE   = re.compile(r"([^\\\/]+)\.KYJOB", re.IGNORECASE)
+
 
 def ensure_outputs_dir(path: str = "outputs") -> None:
     os.makedirs(path, exist_ok=True)
@@ -21,7 +26,7 @@ def _clean_defect_labels(series: pd.Series) -> pd.Series:
     """
     s = series.fillna("").astype(str).str.strip()
     s = s[s != ""]
-    s = s[s.str.contains(r"[A-Za-z]", regex=True)]
+    s = s[s.str.contains(_ALPHA_RE)]
     return s
 
 
@@ -70,24 +75,24 @@ def _extract_card_name(jobfile: str) -> str:
     Extract card name from job path before .KYJOB and remove token 'NEW'.
     """
     if jobfile is None:
-        return "UNKNOWN_CARD"
+        return _UNKNOWN
 
     s = str(jobfile).strip().strip('"')
     if s == "" or s.lower() == "nan":
-        return "UNKNOWN_CARD"
+        return _UNKNOWN
 
-    m = re.search(r"([^\\\/]+)\.KYJOB", s, flags=re.IGNORECASE)
+    m = _CARD_RE.search(s)
     if m:
         name = m.group(1).strip()
     else:
         parts = re.split(r"[\\\/]+", s)
         parts = [p for p in parts if p.strip()]
-        name = parts[-1].strip() if parts else "UNKNOWN_CARD"
+        name = parts[-1].strip() if parts else _UNKNOWN
 
     toks = [t for t in name.split() if t.upper() != "NEW"]
     name = " ".join(toks).strip()
 
-    return name if name else "UNKNOWN_CARD"
+    return name if name else _UNKNOWN
 
 
 # -----------------------------
@@ -134,15 +139,12 @@ def pcbs_flagged_by_card(df: pd.DataFrame) -> pd.DataFrame:
     if "StartDateTime" not in df.columns:
         return pd.DataFrame(columns=["Card", "Count"])
 
-    d = df[df["StartDateTime"].notna()].copy()
+    pcbid_col = df["PCBID"].fillna("").astype(str).str.strip() if "PCBID" in df.columns else ""
+    d = df[df["StartDateTime"].notna() & (pcbid_col != "")].copy()
     if d.empty:
         return pd.DataFrame(columns=["Card", "Count"])
 
-    d["PCBID"] = d.get("PCBID", "").fillna("").astype(str).str.strip()
-    d = d[d["PCBID"] != ""].copy()
-    if d.empty:
-        return pd.DataFrame(columns=["Card", "Count"])
-
+    d["PCBID"] = d["PCBID"].fillna("").astype(str).str.strip()
     d["Card"] = _jobfile_series(d).apply(_extract_card_name)
 
     d.attrs["line"] = df.attrs.get("line", "")
@@ -264,10 +266,11 @@ def cards_scanned_over_time(
     if grain == "hour" and force_7to7_when_hourly:
         d, window_start = _trim_to_dominant_7to7_window(d)
 
-    d["PCBID"] = d.get("PCBID", "").fillna("").astype(str).str.strip()
-    d = d[d["PCBID"] != ""].copy()
+    pcbid_col = d["PCBID"].fillna("").astype(str).str.strip() if "PCBID" in d.columns else ""
+    d = d[pcbid_col != ""].copy()
     if d.empty:
         return pd.DataFrame(columns=["TimeTS", "Count"]), grain, 0
+    d["PCBID"] = d["PCBID"].fillna("").astype(str).str.strip()
 
     d.attrs["line"] = df.attrs.get("line", "")
     d["ScanKey"] = _make_scan_key(d)
@@ -338,10 +341,11 @@ def pcbs_flagged_by_minute(df: pd.DataFrame, hour_ts):
         if d.empty:
             return pd.DataFrame({"TimeTS": full_minutes, "Count": [0] * 60})
 
-    d["PCBID"] = d.get("PCBID", "").fillna("").astype(str).str.strip()
-    d = d[d["PCBID"] != ""].copy()
+    pcbid_col = d["PCBID"].fillna("").astype(str).str.strip() if "PCBID" in d.columns else ""
+    d = d[pcbid_col != ""].copy()
     if d.empty:
         return pd.DataFrame({"TimeTS": full_minutes, "Count": [0] * 60})
+    d["PCBID"] = d["PCBID"].fillna("").astype(str).str.strip()
 
     # Minute bucket (still preserves scan event uniqueness via StartDateTime in ScanKey)
     d["Minute"] = d["StartDateTime"].dt.floor("min")

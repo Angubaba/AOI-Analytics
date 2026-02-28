@@ -45,6 +45,8 @@ from src.log_db import (
     fetch_pcbs_flagged_trend,
 )
 
+import src.report as report
+
 # matplotlib for FPY trend plots
 import matplotlib
 matplotlib.use("Agg")
@@ -415,6 +417,13 @@ class AOIApp(tk.Tk):
         self.main_frame = tk.Frame(self)
         self.main_frame.pack(fill="both", expand=True)
 
+        # Modern look on Windows (falls back gracefully on other platforms)
+        try:
+            style = ttk.Style(self)
+            style.theme_use("vista")
+        except Exception:
+            pass
+
         self.notebook = ttk.Notebook(self.main_frame)
         self.notebook.pack(fill="both", expand=True)
 
@@ -422,11 +431,13 @@ class AOIApp(tk.Tk):
         self.log_tab = tk.Frame(self.notebook)
         self.trends_tab = tk.Frame(self.notebook)
         self.formats_tab = tk.Frame(self.notebook)
+        self.report_tab = tk.Frame(self.notebook)
 
         self.notebook.add(self.analysis_tab, text="Analysis")
         self.notebook.add(self.log_tab, text="Log Data")
         self.notebook.add(self.trends_tab, text="Trends")
         self.notebook.add(self.formats_tab, text="Formats")
+        self.notebook.add(self.report_tab, text="Report")
 
         self.notebook.select(self.analysis_tab)
 
@@ -434,6 +445,8 @@ class AOIApp(tk.Tk):
         self._img_defects = None
         self._img_cards = None
         self._img_trend = None
+        # Actual displayed image dimensions → used by _x_to_index for centering correction
+        self._img_display_size = {}   # which -> (w_px, h_px)
 
         # store last line-level outputs (single-file analysis)
         self._line_defects_png = None
@@ -518,11 +531,20 @@ class AOIApp(tk.Tk):
         self._trend_dates = []
         self._trend_selected_idx = None
 
+        # Report tab state
+        self.report_line1_path = tk.StringVar(value="")
+        self.report_line2_path = tk.StringVar(value="")
+        self.report_line4_path = tk.StringVar(value="")
+        self.report_date = tk.StringVar(value=datetime.today().strftime("%d/%m/%Y"))
+        self.report_status = tk.StringVar(value="Select files and click Generate & Save Report.")
+
+
         # build tabs
         self._build_analysis_ui()
         self._build_log_ui()
         self._build_trends_ui()
         self._build_formats_ui()
+        self._build_report_ui()
 
         self._refresh_years_months()
 
@@ -564,8 +586,8 @@ class AOIApp(tk.Tk):
         fig = plt.figure(figsize=(14, 6))
         ax = fig.add_subplot(111)
 
-        # keep consistent margins with click mapping
-        fig.subplots_adjust(left=self._plot_left_frac, right=self._plot_right_frac, bottom=0.22, top=0.90)
+        # keep consistent margins with click mapping; top=0.92 gives bar-top labels extra room
+        fig.subplots_adjust(left=self._plot_left_frac, right=self._plot_right_frac, bottom=0.22, top=0.92)
 
         if metric == "FPY %":
             y = []
@@ -578,8 +600,9 @@ class AOIApp(tk.Tk):
                     y.append((max(0, c - f) / c) * 100.0)
 
             ax.bar(x, y)  # default color
+            ax.set_xlim(-0.5, len(x) - 0.5)   # pin xlim so click mapping is exact
             ax.set_ylabel("FPY %")
-            ax.set_ylim(0, 100)
+            ax.set_ylim(0, 118)  # 18 % headroom so bar-top labels never clip
             ax.set_title(title)
             ax.set_xticks(x)
 
@@ -613,6 +636,7 @@ class AOIApp(tk.Tk):
 
             # Front bar (flagged)
             ax.bar(x, flagged, zorder=2, label="Flagged")
+            ax.set_xlim(-0.5, len(x) - 0.5)   # pin xlim so click mapping is exact
 
             ax.set_ylabel("PCBs")
             ax.set_title(title)
@@ -630,6 +654,11 @@ class AOIApp(tk.Tk):
                     y_text = f
                 ax.text(i, y_text, lab, ha="center", va="bottom", fontsize=8)
 
+            # ylim headroom: 22 % above peak so two-line "checked\nflagged" labels never clip
+            peak = max(max(flagged, default=0),
+                       max((c for c in checked if c is not None), default=0), 1)
+            ax.set_ylim(0, peak * 1.22)
+
         # Reduce tick crowding for long ranges
         if len(dates) > 31:
             step = max(1, len(dates) // 16)
@@ -640,7 +669,7 @@ class AOIApp(tk.Tk):
 
         # Legend only makes sense for Counts (checked/flagged)
         if metric != "FPY %":
-            ax.legend(loc="upper right", fontsize=9)
+            ax.legend(loc="best", fontsize=9, framealpha=0.85)
 
         fig.savefig(out_png, dpi=160)
         plt.close(fig)
@@ -797,10 +826,10 @@ class AOIApp(tk.Tk):
         body = tk.Frame(self.analysis_tab, padx=12, pady=10)
         body.pack(fill="both", expand=True)
 
-        left = tk.LabelFrame(body, text="Top Defects (PNG)", padx=8, pady=8)
+        left = tk.LabelFrame(body, text="Top Defects  — click a bar to see defect timing", padx=8, pady=8)
         left.pack(side="left", fill="both", expand=True, padx=(0, 6))
 
-        right = tk.LabelFrame(body, text="PCBs Flagged (PNG)", padx=8, pady=8)
+        right = tk.LabelFrame(body, text="PCBs Flagged  — click a bar to drill into minutes", padx=8, pady=8)
         right.pack(side="left", fill="both", expand=True, padx=(6, 0))
 
         top2_frame = tk.Frame(left)
@@ -824,26 +853,26 @@ class AOIApp(tk.Tk):
         tk.Label(col_right, textvariable=self.top2_right_title, font=("Segoe UI", 10, "bold")).pack(anchor="w")
         tk.Label(col_right, textvariable=self.top2_right_body, font=("Segoe UI", 10), justify="left", wraplength=520).pack(anchor="w")
 
-        self.defects_canvas = tk.Label(left)
+        self.defects_canvas = tk.Label(left, cursor="hand2")
         self.defects_canvas.pack(fill="both", expand=True)
         self.defects_canvas.bind("<Button-1>", self._on_defect_chart_click)
 
         summary = tk.Frame(right)
-        summary.pack(fill="x", pady=(0, 6))
+        summary.pack(fill="x", pady=(0, 4))
         tk.Label(summary, textvariable=self.total_cards_text, font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        tk.Label(summary, textvariable=self.card_breakdown_text, font=("Segoe UI", 9), fg="#333", justify="left").pack(anchor="w")
 
         self.card_ui_row = tk.Frame(right)
-        self.card_ui_row.pack(fill="x", pady=(8, 6))
-        tk.Label(self.card_ui_row, text="Click a card:", font=("Segoe UI", 9, "bold")).pack(side="left")
+        self.card_ui_row.pack(fill="x", pady=(4, 2))
+        tk.Label(self.card_ui_row, text="Cards (click to filter):", font=("Segoe UI", 9, "bold")).pack(side="left")
         self.btn_show_line = tk.Button(self.card_ui_row, text="Show Line Summary", command=self._show_line_summary, width=18)
         self.btn_show_line.pack(side="right")
 
-        self.card_list = tk.Listbox(right, height=6)
-        self.card_list.pack(fill="x", pady=(0, 8))
+        # Merged: shows "CardName: count" — count visible + clickable in one widget
+        self.card_list = tk.Listbox(right, height=4, cursor="hand2")
+        self.card_list.pack(fill="x", pady=(0, 4))
         self.card_list.bind("<<ListboxSelect>>", self._on_card_click)
 
-        self.cards_canvas = tk.Label(right)
+        self.cards_canvas = tk.Label(right, cursor="hand2")
         self.cards_canvas.pack(fill="both", expand=True)
         self.cards_canvas.bind("<Button-1>", self._on_cards_chart_click)
 
@@ -973,6 +1002,40 @@ class AOIApp(tk.Tk):
         ]
         return "\n".join([f"• {x}" for x in fixes])
 
+    # ------------------------------------------------------------------
+    # Shared display helpers (eliminate repeated 10-15 line blocks)
+    # ------------------------------------------------------------------
+
+    def _get_top2_info(self, defects_df) -> tuple:
+        """Return (left_title, left_body, right_title, right_body) for top-2 defects."""
+        lt = lb = rt = rb = ""
+        if defects_df is None or defects_df.empty:
+            return lt, lb, rt, rb
+        top2 = defects_df.head(2)
+        if len(top2) >= 1:
+            d1 = str(top2.iloc[0]["Defect"])
+            lt = f"1) {d1}  (Count: {int(top2.iloc[0]['Count'])})"
+            lb = self._format_fixes(d1)
+        if len(top2) >= 2:
+            d2 = str(top2.iloc[1]["Defect"])
+            rt = f"2) {d2}  (Count: {int(top2.iloc[1]['Count'])})"
+            rb = self._format_fixes(d2)
+        return lt, lb, rt, rb
+
+    def _format_card_breakdown(self, by_card) -> tuple:
+        """Return ("", display_items) where display_items are "CardName: count" strings.
+        The first element is kept for API compat but the breakdown label has been removed;
+        the listbox now shows counts inline so both info and click live in one widget."""
+        if by_card is None or by_card.empty:
+            return "", []
+        display = [f"{r['Card']}: {int(r['Count'])}" for _, r in by_card.iterrows()]
+        return "", display
+
+    def _show_chart_pair(self, defects_png: str, cards_png: str):
+        """Load both chart canvases at once."""
+        self._load_image(self.defects_canvas, defects_png, which="defects")
+        self._load_image(self.cards_canvas, cards_png, which="cards")
+
     def _reset_drill_state(self):
         self._drill_active = False
         self._drill_hour_index = None
@@ -1020,20 +1083,7 @@ class AOIApp(tk.Tk):
             defects.to_csv(os.path.join(out_dir, "defect_pareto.csv"), index=False)
             plot_top_defects_bars(defects, defects_png, title="Top defect types flagged by AOI (event rows)")
 
-            top2 = defects.head(2).copy()
-            left_title = left_body = right_title = right_body = ""
-
-            if len(top2) >= 1:
-                d1 = str(top2.iloc[0]["Defect"])
-                c1 = int(top2.iloc[0]["Count"])
-                left_title = f"1) {d1}  (Count: {c1})"
-                left_body = self._format_fixes(d1)
-
-            if len(top2) >= 2:
-                d2 = str(top2.iloc[1]["Defect"])
-                c2 = int(top2.iloc[1]["Count"])
-                right_title = f"2) {d2}  (Count: {c2})"
-                right_body = self._format_fixes(d2)
+            left_title, left_body, right_title, right_body = self._get_top2_info(defects)
 
             ts, grain, total_flagged = cards_scanned_over_time(
                 df,
@@ -1062,17 +1112,7 @@ class AOIApp(tk.Tk):
             by_card = pcbs_flagged_by_card(df)
             by_card.to_csv(os.path.join(out_dir, "pcbs_flagged_by_card.csv"), index=False)
 
-            breakdown_lines = []
-            card_names = []
-            if not by_card.empty:
-                for _, r in by_card.iterrows():
-                    card_names.append(str(r["Card"]))
-                for _, r in by_card.head(6).iterrows():
-                    breakdown_lines.append(f"• {r['Card']}: {int(r['Count'])}")
-                if len(by_card) > 6:
-                    breakdown_lines.append(f"• ... +{len(by_card) - 6} more")
-            breakdown_text = "\n".join(breakdown_lines)
-
+            breakdown_text, card_names = self._format_card_breakdown(by_card)
             summary = f"Total PCBs flagged in period: {total_flagged:,}  ({'Hourly' if grain=='hour' else 'Daily'} view)"
 
             self._line_defects_png = defects_png
@@ -1149,28 +1189,8 @@ class AOIApp(tk.Tk):
                 by_card = pcbs_flagged_by_card(df)
                 by_card.to_csv(os.path.join(line_dir, "pcbs_flagged_by_card.csv"), index=False)
 
-                breakdown_lines = []
-                card_names = []
-                if not by_card.empty:
-                    card_names = by_card["Card"].astype(str).tolist()
-                    for _, rr in by_card.head(6).iterrows():
-                        breakdown_lines.append(f"• {rr['Card']}: {int(rr['Count'])}")
-                    if len(by_card) > 6:
-                        breakdown_lines.append(f"• ... +{len(by_card) - 6} more")
-                breakdown_text = "\n".join(breakdown_lines)
-
-                top2 = defects.head(2).copy()
-                lt = lb = rt = rb = ""
-                if len(top2) >= 1:
-                    d1 = str(top2.iloc[0]["Defect"])
-                    c1 = int(top2.iloc[0]["Count"])
-                    lt = f"1) {d1}  (Count: {c1})"
-                    lb = self._format_fixes(d1)
-                if len(top2) >= 2:
-                    d2 = str(top2.iloc[1]["Defect"])
-                    c2 = int(top2.iloc[1]["Count"])
-                    rt = f"2) {d2}  (Count: {c2})"
-                    rb = self._format_fixes(d2)
+                breakdown_text, card_names = self._format_card_breakdown(by_card)
+                lt, lb, rt, rb = self._get_top2_info(defects)
 
                 summary = f"{line.upper()} | Total PCBs flagged: {int(total_flagged):,}  ({'Hourly' if grain=='hour' else 'Daily'} view)"
 
@@ -1221,18 +1241,7 @@ class AOIApp(tk.Tk):
                 grain="hour",
             )
 
-            top2 = combined_defects.head(2).copy()
-            lt = lb = rt = rb = ""
-            if len(top2) >= 1:
-                d1 = str(top2.iloc[0]["Defect"])
-                c1 = int(top2.iloc[0]["Count"])
-                lt = f"1) {d1}  (Count: {c1})"
-                lb = self._format_fixes(d1)
-            if len(top2) >= 2:
-                d2 = str(top2.iloc[1]["Defect"])
-                c2 = int(top2.iloc[1]["Count"])
-                rt = f"2) {d2}  (Count: {c2})"
-                rb = self._format_fixes(d2)
+            lt, lb, rt, rb = self._get_top2_info(combined_defects)
 
             combined_total = sum(int(total_flagged_by_line.get(k, 0)) for k in ("line1", "line2", "line4"))
             combined_summary = (
@@ -1321,8 +1330,7 @@ class AOIApp(tk.Tk):
         self.total_cards_text.set(payload.get("summary", "Total PCBs flagged: -"))
         self.card_breakdown_text.set(payload.get("breakdown", ""))
 
-        self._load_image(self.defects_canvas, payload["defects_png"], which="defects")
-        self._load_image(self.cards_canvas, payload["cards_png"], which="cards")
+        self._show_chart_pair(payload["defects_png"], payload["cards_png"])
 
         drill = payload.get("drill")
         if drill:
@@ -1338,7 +1346,7 @@ class AOIApp(tk.Tk):
                             ltitle, lbody, rtitle, rbody, card_names, defects_df):
         self._set_card_ui_visible(True)
 
-        self.status_text.set(f"Done. Outputs saved to: {out_dir}")
+        self.status_text.set(f"Done. Outputs saved to: {out_dir}  |  Click a chart bar to drill down.")
 
         self.total_cards_text.set(summary)
         self.card_breakdown_text.set(breakdown)
@@ -1357,8 +1365,7 @@ class AOIApp(tk.Tk):
         for c in card_names:
             self.card_list.insert(tk.END, c)
 
-        self._load_image(self.defects_canvas, defects_png, which="defects")
-        self._load_image(self.cards_canvas, cards_png, which="cards")
+        self._show_chart_pair(defects_png, cards_png)
 
     def _clear_analysis_images(self):
         self.defects_canvas.configure(image="", text="")
@@ -1386,7 +1393,9 @@ class AOIApp(tk.Tk):
         sel = self.card_list.curselection()
         if not sel:
             return
-        card = self.card_list.get(sel[0])
+        # Listbox items are "CardName: count" — extract name from the left side
+        item = self.card_list.get(sel[0])
+        card = item.rsplit(": ", 1)[0] if ": " in item else item
         if not card or not self._current_out_dir:
             return
 
@@ -1439,19 +1448,7 @@ class AOIApp(tk.Tk):
             by_card = pcbs_flagged_by_card(d_card)
             by_card.to_csv(os.path.join(card_folder, "pcbs_flagged_by_card.csv"), index=False)
 
-            top2 = defects.head(2).copy()
-            lt = lb = rt = rb = ""
-            if len(top2) >= 1:
-                d1 = str(top2.iloc[0]["Defect"])
-                c1 = int(top2.iloc[0]["Count"])
-                lt = f"1) {d1}  (Count: {c1})"
-                lb = self._format_fixes(d1)
-            if len(top2) >= 2:
-                d2 = str(top2.iloc[1]["Defect"])
-                c2 = int(top2.iloc[1]["Count"])
-                rt = f"2) {d2}  (Count: {c2})"
-                rb = self._format_fixes(d2)
-
+            lt, lb, rt, rb = self._get_top2_info(defects)
             breakdown = f"• {card}: {total_flagged:,}"
             summary = f"Card view: {card} | Total PCBs flagged: {total_flagged:,}  ({'Hourly' if grain=='hour' else 'Daily'} view)"
 
@@ -1485,8 +1482,7 @@ class AOIApp(tk.Tk):
         if defects_df is not None and not defects_df.empty and "Defect" in defects_df.columns:
             self._last_defects_labels = defects_df["Defect"].astype(str).tolist()
 
-        self._load_image(self.defects_canvas, defects_png, which="defects")
-        self._load_image(self.cards_canvas, cards_png, which="cards")
+        self._show_chart_pair(defects_png, cards_png)
 
     def _show_line_summary(self):
         if not self._line_defects_png or not self._line_cards_png:
@@ -1503,21 +1499,37 @@ class AOIApp(tk.Tk):
         self.top2_left_body.set(lbody)
         self.top2_right_title.set(rtitle)
         self.top2_right_body.set(rbody)
-        self._load_image(self.defects_canvas, self._line_defects_png, which="defects")
-        self._load_image(self.cards_canvas, self._line_cards_png, which="cards")
+        self._show_chart_pair(self._line_defects_png, self._line_cards_png)
         self._reset_defect_state()
 
-    def _x_to_index(self, x_px: int, width_px: int, n: int) -> int:
-        if n <= 0 or width_px <= 1:
+    def _x_to_index(self, x_px: int, widget_w: int, n: int, which: str = "") -> int:
+        """Map a click x-pixel to a bar index.
+
+        Corrects for the image being centered inside the tk.Label widget
+        (centering offset = (widget_w - img_w) // 2), then maps within the
+        plot area using the stored left/right margin fractions.
+        """
+        if n <= 0 or widget_w <= 1:
             return 0
-        x0 = int(self._plot_left_frac * width_px)
-        x1 = int(self._plot_right_frac * width_px)
+
+        img_size = self._img_display_size.get(which)
+        if img_size:
+            img_w = img_size[0]
+            h_offset = max(0, (widget_w - img_w) // 2)
+            x_in_img = x_px - h_offset
+            if x_in_img < 0 or x_in_img > img_w:
+                return 0
+        else:
+            img_w = widget_w
+            x_in_img = x_px
+
+        x0 = int(self._plot_left_frac * img_w)
+        x1 = int(self._plot_right_frac * img_w)
         if x1 <= x0:
-            x0, x1 = 0, width_px
-        x = max(x0, min(x_px, x1 - 1))
-        frac = (x - x0) / max(1, (x1 - x0))
-        idx = int(frac * n)
-        return max(0, min(idx, n - 1))
+            x0, x1 = 0, img_w
+        x = max(x0, min(x_in_img, x1 - 1))
+        frac = (x - x0) / max(1, x1 - x0)
+        return max(0, min(int(frac * n), n - 1))
 
     def _on_cards_chart_click(self, event):
         if self._defect_active:
@@ -1529,7 +1541,7 @@ class AOIApp(tk.Tk):
 
         w = max(self.cards_canvas.winfo_width(), 1)
         n = len(self._drill_times)
-        idx = self._x_to_index(event.x, w, n)
+        idx = self._x_to_index(event.x, w, n, which="cards")
         self._drill_show_hour_index(idx)
 
     def _drill_show_hour_index(self, idx: int):
@@ -1603,14 +1615,24 @@ class AOIApp(tk.Tk):
     def _on_defect_chart_click(self, event):
         if not getattr(self, "_last_defects_labels", None):
             return
-        if self._drill_active:
-            return
+        # No _drill_active guard here: defect timing can be viewed at any time,
+        # even while the right panel is showing a minute drill-down.
 
         w = max(self.defects_canvas.winfo_width(), 1)
         n = len(self._last_defects_labels)
-        idx = self._x_to_index(event.x, w, n)
+        idx = self._x_to_index(event.x, w, n, which="defects")
         defect = self._last_defects_labels[idx]
 
+        # Capture before spawning thread (state could change)
+        prev_png = self._drill_hour_png or self._line_cards_png
+        prev_status = self.status_text.get()
+        self.status_text.set(f"Loading defect timing: {defect}…")
+
+        t = threading.Thread(target=self._defect_timing_safe,
+                             args=(defect, prev_png, prev_status), daemon=True)
+        t.start()
+
+    def _defect_timing_safe(self, defect: str, prev_png: str, prev_status: str):
         try:
             out_dir = self._current_out_dir or os.path.join(os.getcwd(), "outputs")
             drill_dir = os.path.join(out_dir, "defect_timing")
@@ -1633,20 +1655,23 @@ class AOIApp(tk.Tk):
                 grain="hour",
             )
 
-            self._defect_prev_png = self._drill_hour_png or self._line_cards_png
-            self._defect_prev_status = self.status_text.get()
+            def _show():
+                self._defect_prev_png = prev_png
+                self._defect_prev_status = prev_status
+                self._defect_active = True
+                self._drill_active = False   # exit any minute drill-down
+                self._drill_hour_index = None
+                self._load_image(self.cards_canvas, out_png, which="cards")
+                self.btn_back_hour.configure(state="normal")
+                self.btn_prev_hour.configure(state="disabled")
+                self.btn_next_hour.configure(state="disabled")
+                self.status_text.set(f"Defect timing: {defect}  |  Press Back to return.")
 
-            self._defect_active = True
-            self._load_image(self.cards_canvas, out_png, which="cards")
-
-            self.btn_back_hour.configure(state="normal")
-            self.btn_prev_hour.configure(state="disabled")
-            self.btn_next_hour.configure(state="disabled")
-            self.status_text.set("Defect timing view. Press Back to return.")
+            self.after(0, _show)
 
         except Exception as e:
             err = "".join(traceback.format_exception(type(e), e, e.__traceback__))
-            self._on_error(err)
+            self.after(0, lambda: self._on_error(err))
 
     # ---------------- Log Data UI ----------------
     def _build_log_ui(self):
@@ -1914,10 +1939,10 @@ class AOIApp(tk.Tk):
         self.btn_range_to = tk.Button(cfg, text="📅", command=lambda: self._pick_date(self.range_to))
         self.btn_range_to.grid(row=2, column=5, sticky="w", pady=(10, 0))
 
-        actions = tk.Frame(wrap)
-        actions.pack(fill="x", pady=(10, 8))
-        tk.Button(actions, text="Generate Trend", command=self._trend_generate, width=18).pack(side="left")
-        tk.Button(actions, text="Export Trend CSV", command=self._trend_export_csv, width=18).pack(side="left", padx=10)
+        btn_row = tk.Frame(cfg)
+        btn_row.grid(row=3, column=0, columnspan=6, sticky="w", pady=(10, 4))
+        tk.Button(btn_row, text="Generate Trend", command=self._trend_generate, width=18).pack(side="left")
+        tk.Button(btn_row, text="Export Trend CSV", command=self._trend_export_csv, width=18).pack(side="left", padx=10)
 
         st = tk.Frame(wrap)
         st.pack(fill="x", pady=(4, 10))
@@ -1927,7 +1952,7 @@ class AOIApp(tk.Tk):
         chart = tk.LabelFrame(wrap, text="Trend chart (click a bar/day)", padx=8, pady=8)
         chart.pack(fill="both", expand=True)
 
-        self.trend_canvas = tk.Label(chart)
+        self.trend_canvas = tk.Label(chart, cursor="hand2")
         self.trend_canvas.pack(fill="both", expand=True)
         self.trend_canvas.bind("<Button-1>", self._on_trend_click)
 
@@ -2185,7 +2210,7 @@ class AOIApp(tk.Tk):
 
         w = max(self.trend_canvas.winfo_width(), 1)
         n = len(self._trend_dates)
-        idx = self._x_to_index(event.x, w, n)
+        idx = self._x_to_index(event.x, w, n, which="trend")
         idx = max(0, min(idx, n - 1))
         self._trend_selected_idx = idx
 
@@ -2261,12 +2286,27 @@ class AOIApp(tk.Tk):
             widget.configure(image="", text=f"Image not found:\n{path}")
             return
 
-        img = Image.open(path)
-        w = max(widget.winfo_width(), 520)
-        h = max(widget.winfo_height(), 420)
-        img.thumbnail((w, h))
-        tk_img = ImageTk.PhotoImage(img)
+        # Use main-window dimensions (stable across clicks) — widget.winfo_width() grows
+        # after each image load creating a resize feedback loop, so we avoid it here.
+        win_w = max(self.winfo_width(), 1500)
+        win_h = max(self.winfo_height(), 860)
 
+        if which in ("defects", "cards"):
+            t_w = max(int(win_w * 0.46), 520)
+            t_h = max(int(win_h * 0.56), 380)
+        else:  # trend: single full-width panel
+            t_w = max(int(win_w * 0.91), 900)
+            t_h = max(int(win_h * 0.56), 380)
+
+        img = Image.open(path)
+        img.thumbnail((t_w, t_h))
+        disp_w, disp_h = img.size
+        # Store actual displayed size for click-coordinate correction
+        self._img_display_size[which] = (disp_w, disp_h)
+
+        tk_img = ImageTk.PhotoImage(img)
+        # Pin widget size to displayed image — prevents geometry manager from
+        # propagating size changes to parent frames on each successive image load.
         widget.configure(image=tk_img, text="")
 
         if which == "defects":
@@ -2278,6 +2318,108 @@ class AOIApp(tk.Tk):
 
     def _on_error(self, err: str):
         messagebox.showerror("Error", err)
+
+    # ===================== Report Tab =====================
+
+    def _build_report_ui(self):
+        wrap = tk.Frame(self.report_tab, padx=12, pady=12)
+        wrap.pack(fill="both", expand=True)
+
+        box = tk.LabelFrame(wrap, text="PDF Report Generator", padx=12, pady=12)
+        box.pack(fill="x")
+
+        # Date row
+        tk.Label(box, text="Date (DD/MM/YYYY):").grid(row=0, column=0, sticky="w", pady=4)
+        tk.Entry(box, textvariable=self.report_date, width=16).grid(row=0, column=1, sticky="w", padx=6)
+
+        # File picker rows
+        for row_idx, (label, var) in enumerate(
+            [("Line 1 CSV:", self.report_line1_path),
+             ("Line 2 CSV:", self.report_line2_path),
+             ("Line 4 CSV:", self.report_line4_path)],
+            start=1,
+        ):
+            tk.Label(box, text=label).grid(row=row_idx, column=0, sticky="w", pady=4)
+            tk.Entry(box, textvariable=var, width=52).grid(row=row_idx, column=1, sticky="ew", padx=6)
+            tk.Button(
+                box, text="Browse",
+                command=lambda v=var: v.set(
+                    filedialog.askopenfilename(
+                        title="Select AOI CSV",
+                        filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+                    ) or v.get()
+                ),
+            ).grid(row=row_idx, column=2, padx=4)
+
+        box.columnconfigure(1, weight=1)
+
+        # Generate button
+        btn_frame = tk.Frame(wrap, pady=10)
+        btn_frame.pack(fill="x")
+        tk.Button(
+            btn_frame, text="Generate & Save Report",
+            font=("", 11, "bold"), bg="#0078D4", fg="white",
+            activebackground="#005A9E", activeforeground="white",
+            padx=14, pady=6,
+            command=self._on_generate_report,
+        ).pack(side="left")
+
+        # Status label
+        tk.Label(wrap, textvariable=self.report_status, justify="left",
+                 anchor="w", wraplength=800).pack(fill="x", pady=4)
+
+    def _on_generate_report(self):
+        date_str = self.report_date.get().strip()
+        if not date_str:
+            self.report_status.set("Error: please enter a date.")
+            return
+
+        p1 = self.report_line1_path.get().strip()
+        p2 = self.report_line2_path.get().strip()
+        p4 = self.report_line4_path.get().strip()
+
+        if not any([p1, p2, p4]):
+            self.report_status.set("Error: select at least one CSV file.")
+            return
+
+        out_path = filedialog.asksaveasfilename(
+            title="Save PDF Report As",
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+            initialfile=f"AOI_REPORT_{date_str.replace('/', '')}.pdf",
+        )
+        if not out_path:
+            return  # user cancelled
+
+        self.report_status.set("Generating report, please wait…")
+        self.update_idletasks()
+
+        threading.Thread(
+            target=self._run_report_safe,
+            args=(p1, p2, p4, date_str, out_path),
+            daemon=True,
+        ).start()
+
+    def _run_report_safe(self, p1, p2, p4, date_str, out_path):
+        try:
+            def _load(path):
+                if not path:
+                    return None
+                df_raw = load_any_aoi(path)
+                df = clean_aoi_data(df_raw)
+                return df if df is not None and not df.empty else None
+
+            df1 = _load(p1)
+            df2 = _load(p2)
+            df4 = _load(p4)
+
+            report.generate_pdf(df1, df2, df4, date_str, out_path)
+
+            short = os.path.basename(out_path)
+            self.after(0, lambda: self.report_status.set(f"Done — saved: {short}"))
+        except Exception as exc:
+            msg = f"Error: {exc}"
+            self.after(0, lambda m=msg: self.report_status.set(m))
 
 
 if __name__ == "__main__":

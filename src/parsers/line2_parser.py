@@ -1,5 +1,9 @@
 import re
 import pandas as pd
+from ._utils import _extract_uname_from_tokens
+
+# Pre-compiled at module level — avoids recompiling inside the per-token inner loop
+_NUMERIC_RE = re.compile(r"\d{3,}")
 
 
 def parse_line2(file_path: str) -> pd.DataFrame:
@@ -66,7 +70,7 @@ def parse_line2(file_path: str) -> pd.DataFrame:
                     # PCBID is the first *pure numeric* token after AllBarCode
                     pcbid_pos = None
                     for i, t in enumerate(rest):
-                        if re.fullmatch(r"\d{3,}", t):
+                        if _NUMERIC_RE.fullmatch(t):
                             pcbid_pos = i
                             break
                     if pcbid_pos is None:
@@ -88,18 +92,8 @@ def parse_line2(file_path: str) -> pd.DataFrame:
                     tail = rest[pcbid_pos + 5:] if pcbid_pos + 5 < len(rest) else []
 
                     # uname extraction: anchor TB (12 or 13). uname is token right before TB.
-                    tb = None
-                    uname = ""
-                    tb_idx = None
-                    for i, t in enumerate(tail):
-                        if t in ("12", "13"):
-                            tb_idx = i
-                            tb = t
-                            break
-                    if tb_idx is not None and tb_idx - 1 >= 0:
-                        uname = tail[tb_idx - 1]
-                    else:
-                        uname = ""
+                    tb = next((t for t in tail if t in ("12", "13")), None)
+                    uname = _extract_uname_from_tokens(tail)
 
                     rows.append({
                         "StartDateTime_raw": start_raw,

@@ -10,8 +10,13 @@ def load_any_aoi(file_path: str):
     Detects which parser to use based on first header token order.
     Assumes utf-16 text.
     """
-    with open(file_path, encoding="utf-16") as f:
-        header = f.readline().strip().replace("\ufeff", "")
+    try:
+        fh = open(file_path, encoding="utf-16")
+    except (FileNotFoundError, PermissionError, OSError) as e:
+        raise IOError(f"Cannot open AOI file: {file_path!r} — {e}") from e
+
+    with fh:
+        header = fh.readline().strip().replace("\ufeff", "")
 
     h = header.split()
 
