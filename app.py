@@ -15,7 +15,7 @@ import importlib
 
 from PIL import Image, ImageTk
 
-from src.parsers import load_any_aoi
+from src.parsers import load_any_aoi, detect_line_key
 from src.clean_data import clean_aoi_data
 from src.analysis import (
     ensure_outputs_dir,
@@ -46,6 +46,8 @@ from src.log_db import (
 )
 
 import src.report as report
+import src.chatbot as chatbot
+import src.chatbot_db as chatbot_db
 
 # matplotlib for FPY trend plots
 import matplotlib
@@ -432,12 +434,14 @@ class AOIApp(tk.Tk):
         self.trends_tab = tk.Frame(self.notebook)
         self.formats_tab = tk.Frame(self.notebook)
         self.report_tab = tk.Frame(self.notebook)
+        self.chat_tab = tk.Frame(self.notebook)
 
         self.notebook.add(self.analysis_tab, text="Analysis")
         self.notebook.add(self.log_tab, text="Log Data")
         self.notebook.add(self.trends_tab, text="Trends")
         self.notebook.add(self.formats_tab, text="Formats")
         self.notebook.add(self.report_tab, text="Report")
+        self.notebook.add(self.chat_tab, text="Chat")
 
         self.notebook.select(self.analysis_tab)
 
@@ -538,6 +542,15 @@ class AOIApp(tk.Tk):
         self.report_date = tk.StringVar(value=datetime.today().strftime("%d/%m/%Y"))
         self.report_status = tk.StringVar(value="Select files and click Generate & Save Report.")
 
+        # Chat tab state
+        self._chat_selected_files = []     # list of full paths chosen by user
+        self._chat_files_listbox  = None   # tk.Listbox widget — set in _build_chat_ui
+        self.chat_upload_status   = tk.StringVar(value="No CSVs loaded yet.")
+        self._chat_history_widget = None   # tk.Text widget — set in _build_chat_ui
+        chatbot_db.init_chatbot_db()       # ensure DB + tables exist on startup
+        _db = chatbot_db.get_chatbot_db_path()
+        self._chat_known_cards   = chatbot_db.get_known_cards(_db)
+        self._chat_known_defects = chatbot_db.get_known_defects(_db)
 
         # build tabs
         self._build_analysis_ui()
@@ -545,6 +558,7 @@ class AOIApp(tk.Tk):
         self._build_trends_ui()
         self._build_formats_ui()
         self._build_report_ui()
+        self._build_chat_ui()
 
         self._refresh_years_months()
 
@@ -2420,6 +2434,235 @@ class AOIApp(tk.Tk):
         except Exception as exc:
             msg = f"Error: {exc}"
             self.after(0, lambda m=msg: self.report_status.set(m))
+
+
+    # ===================== Chat Tab =====================
+
+    def _build_chat_ui(self):
+        wrap = tk.Frame(self.chat_tab, padx=12, pady=12)
+        wrap.pack(fill="both", expand=True)
+
+        # ── Upload section ────────────────────────────────────────────────
+        up_box = tk.LabelFrame(wrap, text="Upload Training Data", padx=12, pady=10)
+        up_box.pack(fill="x")
+
+        # Button row
+        btn_row = tk.Frame(up_box)
+        btn_row.pack(fill="x", pady=(0, 4))
+        tk.Button(
+            btn_row, text="Browse Files…",
+            font=("", 10, "bold"), bg="#0078D4", fg="white",
+            activebackground="#005A9E", activeforeground="white",
+            padx=10, pady=4,
+            command=self._on_chat_browse,
+        ).pack(side="left")
+        tk.Button(
+            btn_row, text="Clear List",
+            padx=8, pady=4,
+            command=self._on_chat_clear_files,
+        ).pack(side="left", padx=(6, 0))
+        tk.Label(btn_row, text="(select any number of CSVs — line detected automatically)",
+                 fg="#666666").pack(side="left", padx=(10, 0))
+
+        # File listbox
+        lb_frame = tk.Frame(up_box)
+        lb_frame.pack(fill="x")
+        self._chat_files_listbox = tk.Listbox(
+            lb_frame, height=5, selectmode="extended",
+            font=("Consolas", 9), relief="sunken", bd=1,
+        )
+        self._chat_files_listbox.pack(side="left", fill="x", expand=True)
+        lb_sb = tk.Scrollbar(lb_frame, command=self._chat_files_listbox.yview)
+        lb_sb.pack(side="right", fill="y")
+        self._chat_files_listbox.configure(yscrollcommand=lb_sb.set)
+
+        # Load / Reset buttons + status
+        action_row = tk.Frame(up_box)
+        action_row.pack(anchor="w", pady=(6, 0))
+        tk.Button(
+            action_row, text="Load & Ingest CSVs",
+            font=("", 10, "bold"), bg="#217346", fg="white",
+            activebackground="#145230", activeforeground="white",
+            padx=10, pady=4,
+            command=self._on_chat_load,
+        ).pack(side="left")
+        tk.Button(
+            action_row, text="Reset Knowledge Base",
+            bg="#C0392B", fg="white",
+            activebackground="#922B21", activeforeground="white",
+            padx=8, pady=4,
+            command=self._on_chat_reset_kb,
+        ).pack(side="left", padx=(8, 0))
+        tk.Label(up_box, textvariable=self.chat_upload_status,
+                 fg="#555555", justify="left").pack(anchor="w", pady=(2, 0))
+
+        # ── Chat section ──────────────────────────────────────────────────
+        chat_box = tk.LabelFrame(wrap, text="AOI Assistant", padx=12, pady=10)
+        chat_box.pack(fill="both", expand=True, pady=(10, 0))
+
+        # History display
+        hist_frame = tk.Frame(chat_box)
+        hist_frame.pack(fill="both", expand=True)
+
+        self._chat_history_widget = tk.Text(
+            hist_frame, wrap="word", state="disabled",
+            font=("Consolas", 10), bg="#F7F7F7", relief="sunken", bd=1,
+        )
+        self._chat_history_widget.pack(side="left", fill="both", expand=True)
+
+        sb = tk.Scrollbar(hist_frame, command=self._chat_history_widget.yview)
+        sb.pack(side="right", fill="y")
+        self._chat_history_widget.configure(yscrollcommand=sb.set)
+
+        # Colour tags
+        self._chat_history_widget.tag_configure("you",  foreground="#0055AA", font=("Consolas", 10, "bold"))
+        self._chat_history_widget.tag_configure("bot",  foreground="#1A1A1A")
+        self._chat_history_widget.tag_configure("hint", foreground="#888888", font=("Consolas", 9, "italic"))
+
+        # Seed welcome message
+        self._chat_append("bot",
+            'Welcome to AOI Assistant.\n'
+            'Type "help" to see example questions.\n'
+            'Upload historical CSVs above to enable card & defect queries.\n'
+        )
+
+        # Input row
+        input_frame = tk.Frame(chat_box)
+        input_frame.pack(fill="x", pady=(8, 0))
+
+        self._chat_entry = tk.Entry(input_frame, font=("", 11))
+        self._chat_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        self._chat_entry.bind("<Return>", lambda _e: self._on_chat_send())
+
+        tk.Button(
+            input_frame, text="Send",
+            font=("", 10, "bold"), bg="#0078D4", fg="white",
+            activebackground="#005A9E", activeforeground="white",
+            padx=10, pady=4,
+            command=self._on_chat_send,
+        ).pack(side="left")
+
+        tk.Button(
+            input_frame, text="Clear",
+            command=self._on_chat_clear,
+        ).pack(side="left", padx=(6, 0))
+
+    def _chat_append(self, role: str, text: str):
+        """Thread-safe append to the chat history widget."""
+        w = self._chat_history_widget
+        w.configure(state="normal")
+        if role == "you":
+            w.insert("end", "You:  ", "you")
+            w.insert("end", text + "\n")
+        elif role == "bot":
+            w.insert("end", "Bot:  ", "bot")
+            w.insert("end", text + "\n\n")
+        else:
+            w.insert("end", text + "\n", "hint")
+        w.configure(state="disabled")
+        w.see("end")
+
+    def _on_chat_clear(self):
+        w = self._chat_history_widget
+        w.configure(state="normal")
+        w.delete("1.0", "end")
+        w.configure(state="disabled")
+        self._chat_append("hint", '[Chat cleared — type "help" for example questions]')
+
+    # ── Browse / Clear file list ───────────────────────────────────────────
+
+    def _on_chat_browse(self):
+        paths = filedialog.askopenfilenames(
+            title="Select AOI CSV files",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        for p in paths:
+            if p and p not in self._chat_selected_files:
+                self._chat_selected_files.append(p)
+                self._chat_files_listbox.insert("end", os.path.basename(p))
+
+    def _on_chat_clear_files(self):
+        self._chat_selected_files.clear()
+        self._chat_files_listbox.delete(0, "end")
+        self.chat_upload_status.set("No CSVs loaded yet.")
+
+    def _on_chat_reset_kb(self):
+        if messagebox.askyesno(
+            "Reset Knowledge Base",
+            "This will delete ALL learned card/defect data and ingestion history.\n"
+            "Your CSVs in the list above can then be re-ingested with the latest logic.\n\n"
+            "Continue?",
+        ):
+            chatbot_db.reset_chatbot_db()
+            self._chat_known_cards   = []
+            self._chat_known_defects = []
+            self.chat_upload_status.set("Knowledge base cleared — click 'Load & Ingest CSVs' to re-ingest.")
+
+    # ── Load & Ingest ──────────────────────────────────────────────────────
+
+    def _on_chat_load(self):
+        self.chat_upload_status.set("Loading and ingesting CSVs…")
+        threading.Thread(target=self._run_chat_load_safe, daemon=True).start()
+
+    def _run_chat_load_safe(self):
+        results = []
+        for path in list(self._chat_selected_files):
+            fname = os.path.basename(path)
+            try:
+                line_key = detect_line_key(path)
+            except Exception as exc:
+                results.append(f"{fname}: unrecognised format — {exc}")
+                continue
+            try:
+                df_raw = load_any_aoi(path)
+                df = clean_aoi_data(df_raw)
+                if df is None or df.empty:
+                    results.append(f"{fname} ({line_key}): empty/unreadable")
+                    continue
+                res = chatbot_db.ingest_csv(df, line_key, fname)
+                if res["skipped"]:
+                    results.append(f"{fname} ({line_key}): already ingested")
+                else:
+                    results.append(
+                        f"{fname} ({line_key}): {res['rows']:,} rows, "
+                        f"{res['cards']} cards, {res['defects']} defect types"
+                    )
+            except Exception as exc:
+                results.append(f"{fname} ({line_key}): error — {exc}")
+
+        # Refresh entity lists
+        db = chatbot_db.get_chatbot_db_path()
+        self._chat_known_cards   = chatbot_db.get_known_cards(db)
+        self._chat_known_defects = chatbot_db.get_known_defects(db)
+
+        status = " | ".join(results) if results else "No files selected."
+        self.after(0, lambda s=status: self.chat_upload_status.set(s))
+
+    # ── Chat send ─────────────────────────────────────────────────────────
+
+    def _on_chat_send(self):
+        msg = self._chat_entry.get().strip()
+        if not msg:
+            return
+        self._chat_entry.delete(0, "end")
+        self._chat_append("you", msg)
+        threading.Thread(
+            target=self._run_chat_safe, args=(msg,), daemon=True
+        ).start()
+
+    def _run_chat_safe(self, message: str):
+        try:
+            from src.log_db import get_db_path as _get_logs_db
+            response = chatbot.answer(
+                question=message,
+                chatbot_db_path=chatbot_db.get_chatbot_db_path(),
+                logs_db_path=_get_logs_db(),
+                known_cards=self._chat_known_cards,
+                known_defects=self._chat_known_defects,
+            )
+        except Exception as exc:
+            response = f"Error: {exc}"
+        self.after(0, lambda r=response: self._chat_append("bot", r))
 
 
 if __name__ == "__main__":

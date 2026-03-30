@@ -1,12 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-
 a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=[],
+    datas=[
+        ('src', 'src'),
+    ],
+    hiddenimports=[
+        'src.analysis',
+        'src.chatbot',
+        'src.chatbot_db',
+        'src.clean_data',
+        'src.log_db',
+        'src.plots',
+        'src.report',
+        'src.parsers',
+        'src.parsers.auto',
+        'src.parsers.line1_parser',
+        'src.parsers.line2_parser',
+        'src.parsers.line4_parser',
+        'PIL._tkinter_finder',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

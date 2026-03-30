@@ -12,8 +12,12 @@ build/
 dist/
 *.spec.bak
 
-# Database (portable, not source)
+# Databases (generated at runtime)
 aoi_logs.db
+aoi_chatbot.db
+
+# Claude Code
+.claude/
 
 # Virtual environments
 venv/

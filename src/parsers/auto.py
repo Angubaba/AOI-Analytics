@@ -33,3 +33,24 @@ def load_any_aoi(file_path: str):
         return parse_line1(file_path)
 
     raise ValueError(f"Unknown AOI format header: {header[:120]}")
+
+
+def detect_line_key(file_path: str) -> str:
+    """
+    Read only the header row and return 'line1' | 'line2' | 'line4'.
+    Raises ValueError for unknown formats.
+    """
+    try:
+        with open(file_path, encoding="utf-16") as fh:
+            header = fh.readline().strip().replace("\ufeff", "")
+    except (FileNotFoundError, PermissionError, OSError) as e:
+        raise IOError(f"Cannot open AOI file: {file_path!r} — {e}") from e
+
+    h = header.split()
+    if len(h) >= 3 and h[0] == "PCBID" and h[1] == "MachineID":
+        return "line4"
+    if len(h) >= 3 and h[0] == "StartDateTime" and "AllBarCode" in h[:5]:
+        return "line2"
+    if len(h) >= 2 and h[0] == "BarCode" and h[1] == "AllBarCode":
+        return "line1"
+    raise ValueError(f"Unknown AOI format: {header[:80]}")
