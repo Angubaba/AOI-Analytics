@@ -1,9 +1,9 @@
 Defect,Count
-(OCROCV),3032
-Coplanarity,632
-Foreignmaterial,262
-Part(Dimen.),254
-PadOverhang,127
-UpsideDown,92
-Polarity,10
-Missing,2
+Foreignmaterial,116
+Polarity,26
+(OCROCV),22
+Coplanarity,18
+UpsideDown,10
+PadOverhang,9
+Part(Dimen.),3
+Missing,1
