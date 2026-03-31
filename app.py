@@ -508,8 +508,8 @@ class AOIApp(tk.Tk):
 
         # Log Data state
         self.log_line = tk.StringVar(value="line4")
-        self.log_date_start = tk.StringVar(value=_fmt_ddmmyyyy(date.today()))
-        self.log_date_end = tk.StringVar(value=_fmt_ddmmyyyy(date.today() + timedelta(days=1)))
+        self.log_date_start = tk.StringVar(value=_fmt_ddmmyyyy(date.today() - timedelta(days=1)))
+        self.log_date_end = tk.StringVar(value=_fmt_ddmmyyyy(date.today()))
         self.log_file_path = tk.StringVar(value="")
         self.log_status = tk.StringVar(value="Select dates + line, then upload a CSV. Preview stats before saving.")
         self.log_stats = tk.StringVar(value="")
