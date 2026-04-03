@@ -1,3 +1,3 @@
 @echo off
-pyinstaller AOI_Analytics.spec
+pyinstaller -y AOI_Analytics.spec
 pause
