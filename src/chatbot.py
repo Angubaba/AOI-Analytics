@@ -1,4 +1,5 @@
 # src/chatbot.py
+from __future__ import annotations
 """
 AOI Chatbot — Rule-Based Engine
 
