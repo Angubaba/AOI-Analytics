@@ -2278,17 +2278,25 @@ class AOIApp(tk.Tk):
         box.pack(fill="both", expand=True)
 
         formats_text = (
-            "LINE1\n"
+            "LINE 1\n"
+            "Date format: DD-MM-YYYY HH:MM:SS\n"
             "BarCode AllBarCode JobFileIDShare StartDateTime PCBID MachineID EndDateTime UserID "
-            "PCBResultBefore PCBResultAfter PCBRepair TB Checksum uname PackageName PackageType \n"
+            "PCBResultBefore PCBResultAfter PCBRepair TB Checksum uname PackageName PackageType "
             "PartNumber unameAngle ArrayIndex InspType PackageTypeGroup Failure Defect Repair LeadName LeadID\n\n"
-            "LINE2\n"
+            "LINE 2  (old format)\n"
+            "Date format: YYYY-MM-DD h:mm:ss AM/PM\n"
             "StartDateTime JobFileIDShare AllBarCode PCBID MachineID EndDateTime UserID "
-            "PCBResultBefore PCBResultAfter PCBRepair BarCode TB Checksum uname PackageName PackageType\n "
+            "PCBResultBefore PCBResultAfter PCBRepair BarCode TB Checksum uname PackageName PackageType "
             "PartNumber unameAngle ArrayIndex InspType PackageTypeGroup Failure Defect Repair LeadName LeadID\n\n"
-            "LINE4\n"
+            "LINE 2  (new format)\n"
+            "Date format: DD-MM-YYYY HH:MM:SS\n"
+            "StartDateTime JobFileIDShare AllBarCode PCBID MachineID EndDateTime UserID "
+            "PCBResultAfter PCBResultBefore PCBRepair BarCode TB Checksum uname PackageName PackageType "
+            "PartNumber unameAngle ArrayIndex InspType PackageTypeGroup Failure Defect Repair LeadName LeadID\n\n"
+            "LINE 4\n"
+            "Date format: DD-MM-YYYY HH:MM:SS\n"
             "PCBID MachineID JobFileIDShare StartDateTime EndDateTime UserID PCBResultBefore PCBResultAfter "
-            "PCBRepair BarCode TB Checksum uname PackageName PackageType PartNumber unameAngle ArrayIndex\n "
+            "PCBRepair BarCode TB Checksum uname PackageName PackageType PartNumber unameAngle ArrayIndex "
             "InspType PackageTypeGroup Failure Defect Repair LeadName LeadID AllBarCode"
         )
 
