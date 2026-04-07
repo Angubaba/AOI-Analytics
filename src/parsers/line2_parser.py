@@ -42,12 +42,12 @@ def parse_line2(file_path: str) -> pd.DataFrame:
                         skipped += 1
                         continue
 
-                    # StartDateTime is 3 tokens: date time AM/PM
-                    # Example: 2026-01-19 7:52:56 AM
-                    if len(tokens) < 4:
+                    # StartDateTime is 2 tokens: DD-MM-YYYY HH:MM:SS
+                    # Example: 06-04-2026 12:28:55
+                    if len(tokens) < 3:
                         skipped += 1
                         continue
-                    start_raw = " ".join(tokens[0:3])
+                    start_raw = " ".join(tokens[0:2])
 
                     # Find end of jobfile (token ending with .KYJOB)
                     try:
@@ -56,11 +56,11 @@ def parse_line2(file_path: str) -> pd.DataFrame:
                         skipped += 1
                         continue
 
-                    # JobFileIDShare starts after StartDateTime tokens (index 3) up to kyjob_idx inclusive
-                    if kyjob_idx < 3:
+                    # JobFileIDShare starts after StartDateTime tokens (index 2) up to kyjob_idx inclusive
+                    if kyjob_idx < 2:
                         skipped += 1
                         continue
-                    job_file = " ".join(tokens[3:kyjob_idx + 1])
+                    job_file = " ".join(tokens[2:kyjob_idx + 1])
 
                     rest = tokens[kyjob_idx + 1:]
                     if len(rest) < 4:
