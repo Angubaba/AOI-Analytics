@@ -9,10 +9,10 @@ _NUMERIC_RE = re.compile(r"\d{3,}")
 def parse_line2(file_path: str) -> pd.DataFrame:
     """
     Line-2 format (file extension is .csv but rows are whitespace-separated):
-    - StartDateTime is 3 tokens: YYYY-MM-DD h:mm:ss AM/PM
+    - StartDateTime is 2 tokens: DD-MM-YYYY HH:MM:SS  (24-hour, no AM/PM)
     - JobFileIDShare may contain spaces; anchor ends at token ending with .KYJOB
     - AllBarCode may contain spaces; it ends right before PCBID (first pure-numeric token)
-    - EndDateTime is 3 tokens: YYYY-MM-DD h:mm:ss AM/PM
+    - EndDateTime is 2 tokens: DD-MM-YYYY HH:MM:SS
 
     Output columns at minimum:
       StartDateTime_raw, EndDateTime_raw, JobFileIDShare, AllBarCode, PCBID, MachineID, uname, TB
