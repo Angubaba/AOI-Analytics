@@ -43,12 +43,19 @@ def parse_line2(file_path: str) -> pd.DataFrame:
                         skipped += 1
                         continue
 
-                    # StartDateTime is 2 tokens: DD-MM-YYYY HH:MM:SS
-                    # Example: 06-04-2026 12:28:55
-                    if len(tokens) < 3:
+                    # Auto-detect date format from first token
+                    if _OLD_DATE_RE.match(tokens[0]):
+                        dt_tokens = 3   # YYYY-MM-DD h:mm:ss AM/PM
+                    elif _NEW_DATE_RE.match(tokens[0]):
+                        dt_tokens = 2   # DD-MM-YYYY HH:MM:SS
+                    else:
                         skipped += 1
                         continue
-                    start_raw = " ".join(tokens[0:2])
+
+                    if len(tokens) < dt_tokens + 1:
+                        skipped += 1
+                        continue
+                    start_raw = " ".join(tokens[0:dt_tokens])
 
                     # Find end of jobfile (token ending with .KYJOB)
                     try:
@@ -57,11 +64,11 @@ def parse_line2(file_path: str) -> pd.DataFrame:
                         skipped += 1
                         continue
 
-                    # JobFileIDShare starts after StartDateTime tokens (index 2) up to kyjob_idx inclusive
-                    if kyjob_idx < 2:
+                    # JobFileIDShare starts after StartDateTime tokens up to kyjob_idx inclusive
+                    if kyjob_idx < dt_tokens:
                         skipped += 1
                         continue
-                    job_file = " ".join(tokens[2:kyjob_idx + 1])
+                    job_file = " ".join(tokens[dt_tokens:kyjob_idx + 1])
 
                     rest = tokens[kyjob_idx + 1:]
                     if len(rest) < 4:
@@ -84,13 +91,14 @@ def parse_line2(file_path: str) -> pd.DataFrame:
                     # MachineID follows PCBID
                     machine = rest[pcbid_pos + 1] if pcbid_pos + 1 < len(rest) else ""
 
-                    # EndDateTime is next 2 tokens after MachineID: DD-MM-YYYY HH:MM:SS
+                    # EndDateTime: same token count as StartDateTime
+                    end_start = pcbid_pos + 2
                     end_raw = ""
-                    if pcbid_pos + 3 < len(rest):
-                        end_raw = " ".join(rest[pcbid_pos + 2:pcbid_pos + 4])
+                    if end_start + dt_tokens <= len(rest):
+                        end_raw = " ".join(rest[end_start:end_start + dt_tokens])
 
                     # After end datetime, there are many fields, but may have blanks (multiple spaces)
-                    tail = rest[pcbid_pos + 4:] if pcbid_pos + 4 < len(rest) else []
+                    tail = rest[end_start + dt_tokens:] if end_start + dt_tokens < len(rest) else []
 
                     # uname extraction: anchor TB (12 or 13). uname is token right before TB.
                     tb = next((t for t in tail if t in ("12", "13")), None)
