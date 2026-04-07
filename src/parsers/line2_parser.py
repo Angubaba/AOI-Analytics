@@ -3,7 +3,9 @@ import pandas as pd
 from ._utils import _extract_uname_from_tokens
 
 # Pre-compiled at module level — avoids recompiling inside the per-token inner loop
-_NUMERIC_RE = re.compile(r"\d{3,}")
+_NUMERIC_RE  = re.compile(r"\d{3,}")
+_OLD_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")  # YYYY-MM-DD  (old format)
+_NEW_DATE_RE = re.compile(r"^\d{2}-\d{2}-\d{4}$")  # DD-MM-YYYY  (new format)
 
 
 def parse_line2(file_path: str) -> pd.DataFrame:
