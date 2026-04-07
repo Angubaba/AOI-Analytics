@@ -83,13 +83,13 @@ def parse_line2(file_path: str) -> pd.DataFrame:
                     # MachineID follows PCBID
                     machine = rest[pcbid_pos + 1] if pcbid_pos + 1 < len(rest) else ""
 
-                    # EndDateTime is next 3 tokens after MachineID
+                    # EndDateTime is next 2 tokens after MachineID: DD-MM-YYYY HH:MM:SS
                     end_raw = ""
-                    if pcbid_pos + 4 < len(rest):
-                        end_raw = " ".join(rest[pcbid_pos + 2:pcbid_pos + 5])
+                    if pcbid_pos + 3 < len(rest):
+                        end_raw = " ".join(rest[pcbid_pos + 2:pcbid_pos + 4])
 
                     # After end datetime, there are many fields, but may have blanks (multiple spaces)
-                    tail = rest[pcbid_pos + 5:] if pcbid_pos + 5 < len(rest) else []
+                    tail = rest[pcbid_pos + 4:] if pcbid_pos + 4 < len(rest) else []
 
                     # uname extraction: anchor TB (12 or 13). uname is token right before TB.
                     tb = next((t for t in tail if t in ("12", "13")), None)
