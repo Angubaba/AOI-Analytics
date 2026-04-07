@@ -13,13 +13,21 @@ def clean_aoi_data(df: pd.DataFrame) -> pd.DataFrame:
     s = df.get("StartDateTime_raw")
     e = df.get("EndDateTime_raw")
 
-    s1 = pd.to_datetime(s, format="%d-%m-%Y %H:%M:%S", errors="coerce")
-    s2 = pd.to_datetime(s, format="%Y-%m-%d %I:%M:%S %p", errors="coerce")
-    df["StartDateTime"] = s1.fillna(s2)
+    empty = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
 
-    e1 = pd.to_datetime(e, format="%d-%m-%Y %H:%M:%S", errors="coerce")
-    e2 = pd.to_datetime(e, format="%Y-%m-%d %I:%M:%S %p", errors="coerce")
-    df["EndDateTime"] = e1.fillna(e2)
+    if s is None:
+        df["StartDateTime"] = empty
+    else:
+        s1 = pd.to_datetime(s, format="%d-%m-%Y %H:%M:%S", errors="coerce")
+        s2 = pd.to_datetime(s, format="%Y-%m-%d %I:%M:%S %p", errors="coerce")
+        df["StartDateTime"] = s1.fillna(s2)
+
+    if e is None:
+        df["EndDateTime"] = empty
+    else:
+        e1 = pd.to_datetime(e, format="%d-%m-%Y %H:%M:%S", errors="coerce")
+        e2 = pd.to_datetime(e, format="%Y-%m-%d %I:%M:%S %p", errors="coerce")
+        df["EndDateTime"] = e1.fillna(e2)
 
     ok = df["StartDateTime"].notna().sum()
     print(f"🧼 Datetime parsed for {ok} / {len(df)} rows")
