@@ -10,11 +10,10 @@ _NEW_DATE_RE = re.compile(r"^\d{2}-\d{2}-\d{4}$")  # DD-MM-YYYY  (new format)
 
 def parse_line2(file_path: str) -> pd.DataFrame:
     """
-    Line-2 format (file extension is .csv but rows are whitespace-separated):
-    - StartDateTime is 2 tokens: DD-MM-YYYY HH:MM:SS  (24-hour, no AM/PM)
-    - JobFileIDShare may contain spaces; anchor ends at token ending with .KYJOB
-    - AllBarCode may contain spaces; it ends right before PCBID (first pure-numeric token)
-    - EndDateTime is 2 tokens: DD-MM-YYYY HH:MM:SS
+    Line-2 format (file extension is .csv but rows are whitespace-separated).
+    Supports two date formats — auto-detected per row:
+      Old: YYYY-MM-DD h:mm:ss AM/PM  (3 tokens)
+      New: DD-MM-YYYY HH:MM:SS       (2 tokens, 24-hour)
 
     Output columns at minimum:
       StartDateTime_raw, EndDateTime_raw, JobFileIDShare, AllBarCode, PCBID, MachineID, uname, TB
