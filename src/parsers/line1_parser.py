@@ -45,8 +45,9 @@ def parse_line1(file_path: str, encoding: str = None) -> pd.DataFrame:
                 header = fh.readline().strip().replace("\ufeff", "")
                 if not header:
                     raise ValueError("Empty header")
-                # Sanity check: line1 header must start with BarCode
-                if not header.split()[0] == "BarCode":
+                # Sanity check: line1 header must contain BarCode and AllBarCode
+                tokens = header.split()
+                if "BarCode" not in tokens or "AllBarCode" not in tokens:
                     raise ValueError(f"Unexpected header: {header[:60]}")
 
                 for raw in fh:
