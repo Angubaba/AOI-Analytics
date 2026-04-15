@@ -16,7 +16,7 @@ LINE1_RE = re.compile(
     (?P<MachineID>\S+)\s+
     (?P<EndDT>\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}:\d{2}:\d{2})
     """,
-    re.VERBOSE,
+    re.VERBOSE | re.IGNORECASE,
 )
 
 TB_RE = re.compile(r"\s(12|13)\s")
