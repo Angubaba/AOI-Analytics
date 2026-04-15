@@ -4,17 +4,17 @@ import pandas as pd
 
 # Anchored extractor:
 # 1) JobFile: starts with "\" and ends with ".KYJOB"
-# 2) StartDT: dd-mm-yyyy HH:MM:SS
+# 2) StartDT: dd-mm-yyyy HH:MM:SS  (1 or 2 digit day/month/hour — handles non-zero-padded)
 # 3) PCBID: digits
 # 4) MachineID: non-space token (AL-SL-xxxxx)
 # 5) EndDT: dd-mm-yyyy HH:MM:SS
 LINE1_RE = re.compile(
     r"""
     (?P<JobFile>\\.*?\.KYJOB)\s+
-    (?P<StartDT>\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2})\s+
+    (?P<StartDT>\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}:\d{2}:\d{2})\s+
     (?P<PCBID>\d+)\s+
     (?P<MachineID>\S+)\s+
-    (?P<EndDT>\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2})
+    (?P<EndDT>\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}:\d{2}:\d{2})
     """,
     re.VERBOSE,
 )
