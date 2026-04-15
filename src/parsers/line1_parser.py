@@ -82,5 +82,5 @@ def parse_line1(file_path: str, encoding: str = "utf-16") -> pd.DataFrame:
     df = pd.DataFrame(rows)
     ok = int(df["ParseOK"].sum()) if "ParseOK" in df.columns else 0
     fail = len(df) - ok
-    print(f"✅ Line1 parsed {len(df)} rows — {ok} OK, {fail} failed regex")
+    print(f"Line1 parsed {len(df)} rows -- {ok} OK, {fail} failed regex")
     return df
