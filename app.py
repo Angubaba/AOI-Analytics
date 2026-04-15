@@ -2277,31 +2277,40 @@ class AOIApp(tk.Tk):
         box = tk.LabelFrame(wrap, text="Supported AOI CSV headers (exact order)", padx=12, pady=12)
         box.pack(fill="both", expand=True)
 
-        formats_text = (
-            "LINE 1\n"
-            "Date format: DD-MM-YYYY HH:MM:SS\n"
-            "BarCode AllBarCode JobFileIDShare StartDateTime PCBID MachineID EndDateTime UserID "
-            "PCBResultBefore PCBResultAfter PCBRepair TB Checksum uname PackageName PackageType "
-            "PartNumber unameAngle ArrayIndex InspType PackageTypeGroup Failure Defect Repair LeadName LeadID\n\n"
-            "LINE 2  (old format)\n"
-            "Date format: YYYY-MM-DD h:mm:ss AM/PM\n"
-            "StartDateTime JobFileIDShare AllBarCode PCBID MachineID EndDateTime UserID "
-            "PCBResultBefore PCBResultAfter PCBRepair BarCode TB Checksum uname PackageName PackageType "
-            "PartNumber unameAngle ArrayIndex InspType PackageTypeGroup Failure Defect Repair LeadName LeadID\n\n"
-            "LINE 2  (new format)\n"
-            "Date format: DD-MM-YYYY HH:MM:SS\n"
-            "StartDateTime JobFileIDShare AllBarCode PCBID MachineID EndDateTime UserID "
-            "PCBResultAfter PCBResultBefore PCBRepair BarCode TB Checksum uname PackageName PackageType "
-            "PartNumber unameAngle ArrayIndex InspType PackageTypeGroup Failure Defect Repair LeadName LeadID\n\n"
-            "LINE 4\n"
-            "Date format: DD-MM-YYYY HH:MM:SS\n"
-            "PCBID MachineID JobFileIDShare StartDateTime EndDateTime UserID PCBResultBefore PCBResultAfter "
-            "PCBRepair BarCode TB Checksum uname PackageName PackageType PartNumber unameAngle ArrayIndex "
-            "InspType PackageTypeGroup Failure Defect Repair LeadName LeadID AllBarCode"
-        )
+        sections = [
+            ("LINE 1",             "DD-MM-YYYY HH:MM:SS",
+             "BarCode  AllBarCode  JobFileIDShare  StartDateTime  PCBID  MachineID  EndDateTime  UserID\n"
+             "PCBResultBefore  PCBResultAfter  PCBRepair  TB  Checksum  uname  PackageName  PackageType\n"
+             "PartNumber  unameAngle  ArrayIndex  InspType  PackageTypeGroup  Failure  Defect  Repair  LeadName  LeadID"),
+            ("LINE 2  (old format)", "YYYY-MM-DD h:mm:ss AM/PM",
+             "StartDateTime  JobFileIDShare  AllBarCode  PCBID  MachineID  EndDateTime  UserID\n"
+             "PCBResultBefore  PCBResultAfter  PCBRepair  BarCode  TB  Checksum  uname  PackageName  PackageType\n"
+             "PartNumber  unameAngle  ArrayIndex  InspType  PackageTypeGroup  Failure  Defect  Repair  LeadName  LeadID"),
+            ("LINE 2  (new format)", "DD-MM-YYYY HH:MM:SS",
+             "StartDateTime  JobFileIDShare  AllBarCode  PCBID  MachineID  EndDateTime  UserID\n"
+             "PCBResultAfter  PCBResultBefore  PCBRepair  BarCode  TB  Checksum  uname  PackageName  PackageType\n"
+             "PartNumber  unameAngle  ArrayIndex  InspType  PackageTypeGroup  Failure  Defect  Repair  LeadName  LeadID"),
+            ("LINE 4",             "DD-MM-YYYY HH:MM:SS",
+             "PCBID  MachineID  JobFileIDShare  StartDateTime  EndDateTime  UserID  PCBResultBefore  PCBResultAfter\n"
+             "PCBRepair  BarCode  TB  Checksum  uname  PackageName  PackageType  PartNumber  unameAngle  ArrayIndex\n"
+             "InspType  PackageTypeGroup  Failure  Defect  Repair  LeadName  LeadID  AllBarCode"),
+        ]
 
-        lbl = tk.Label(box, text=formats_text, justify="left", anchor="nw")
-        lbl.pack(fill="both", expand=True)
+        txt = tk.Text(box, wrap="word", relief="flat", bg=box.cget("bg"),
+                      font=("Courier", 9), state="normal", cursor="arrow")
+        txt.pack(fill="both", expand=True)
+        txt.tag_configure("heading", font=("Courier", 10, "bold"))
+        txt.tag_configure("sub",     font=("Courier", 9, "italic"))
+        txt.tag_configure("cols",    font=("Courier", 9))
+
+        for i, (title, datefmt, cols) in enumerate(sections):
+            if i:
+                txt.insert("end", "\n")
+            txt.insert("end", title + "\n", "heading")
+            txt.insert("end", f"Date format: {datefmt}\n", "sub")
+            txt.insert("end", cols + "\n", "cols")
+
+        txt.configure(state="disabled")
 
     # ---------------- shared helpers ----------------
     def _load_image(self, widget: tk.Label, path: str, which: str):
