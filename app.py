@@ -540,7 +540,7 @@ class AOIApp(tk.Tk):
         self.report_line1_path = tk.StringVar(value="")
         self.report_line2_path = tk.StringVar(value="")
         self.report_line4_path = tk.StringVar(value="")
-        self.report_date = tk.StringVar(value=datetime.today().strftime("%d/%m/%Y"))
+        self.report_date = tk.StringVar(value=(datetime.today() - timedelta(days=1)).strftime("%d/%m/%Y"))
         self.report_status = tk.StringVar(value="Select files and click Generate & Save Report.")
 
         # Chat tab state
