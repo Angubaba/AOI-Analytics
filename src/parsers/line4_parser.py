@@ -45,8 +45,9 @@ def parse_line4(file_path: str) -> pd.DataFrame:
 
                 after_dt = rest[4:]
 
-                # uname: token before TB (12/13)
+                # uname: token before TB (12/13); component: 7 tokens before TB
                 uname_guess = _extract_uname_from_tokens(after_dt) or None
+                component_guess = _extract_component_from_tokens(after_dt) or None
 
                 # AllBarCode usually last token (may contain commas, no spaces)
                 allbarcode = after_dt[-1] if after_dt else None
@@ -59,6 +60,7 @@ def parse_line4(file_path: str) -> pd.DataFrame:
                     "EndDateTime_raw": end_raw,
                     "AllBarCode": allbarcode,
                     "uname": uname_guess,
+                    "component": component_guess,
                     "ParseOK": True,
                     "ParseError": ""
                 })
