@@ -764,6 +764,31 @@ class AOIApp(tk.Tk):
         self.status_text.set("3-Line files selected. Click Run 3-Line Analysis.")
 
     # ---------------- Analysis UI ----------------
+    def _compute_comp_defect_top10(self, df) -> list:
+        if df is None or df.empty:
+            return []
+        if "uname" not in df.columns or "Defect" not in df.columns:
+            return []
+        grp = (
+            df.groupby(["uname", "Defect"], dropna=False)
+            .size()
+            .reset_index(name="Count")
+            .sort_values("Count", ascending=False)
+            .head(10)
+        )
+        rows = []
+        for i, r in enumerate(grp.itertuples(), 1):
+            rows.append(f"#{i:>2}  {str(r.uname):<14}  {str(r.Defect):<22}  ({r.Count})")
+        return rows
+
+    def _update_comp_defect_list(self, rows: list):
+        self.comp_defect_list.delete(0, tk.END)
+        if not rows:
+            self.comp_defect_list.insert(tk.END, "  Run analysis to see top component × defect pairs.")
+        else:
+            for row in rows:
+                self.comp_defect_list.insert(tk.END, "  " + row)
+
     def _build_analysis_ui(self):
         top = tk.Frame(self.analysis_tab, padx=12, pady=10)
         top.pack(fill="x")
