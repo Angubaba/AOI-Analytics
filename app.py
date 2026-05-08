@@ -784,15 +784,18 @@ class AOIApp(tk.Tk):
         )
         rows = []
         for i, r in enumerate(grp.itertuples(), 1):
-            rows.append(f"#{i:>2}  {str(r.component):<12}  {str(r.uname):<18}  ({r.Count})")
+            rows.append(f"#{i:>2}  {str(r.component):<12}  {str(r.uname):<18}  {r.Count:>5} hits")
         return rows
 
     def _update_comp_defect_list(self, rows: list):
         self.comp_defect_list.delete(0, tk.END)
         if not rows:
             self.comp_defect_list.insert(tk.END, "  Run analysis to see top component × defect pairs.")
-        else:
-            for row in rows:
+            return
+        header = f"  {'#':<4}{'Component':<12}  {'Defect':<18}  {'Count':>5}"
+        self.comp_defect_list.insert(tk.END, header)
+        self.comp_defect_list.insert(tk.END, "  " + "-" * 46)
+        for row in rows:
                 self.comp_defect_list.insert(tk.END, "  " + row)
 
     def _build_analysis_ui(self):
