@@ -767,11 +767,16 @@ class AOIApp(tk.Tk):
     def _compute_comp_defect_top10(self, df) -> list:
         if df is None or df.empty:
             return []
-        if "uname" not in df.columns or "Defect" not in df.columns:
+        if "component" not in df.columns or "uname" not in df.columns:
             return []
-        tmp = df[["uname", "Defect"]].fillna("").astype(str)
+        tmp = df[["component", "uname"]].fillna("").astype(str)
+        # filter out rows where either value is empty or purely numeric
+        tmp = tmp[tmp["component"].str.contains(r"[A-Za-z]", regex=True)]
+        tmp = tmp[tmp["uname"].str.contains(r"[A-Za-z]", regex=True)]
+        if tmp.empty:
+            return []
         grp = (
-            tmp.groupby(["uname", "Defect"])
+            tmp.groupby(["component", "uname"])
             .size()
             .reset_index(name="Count")
             .sort_values("Count", ascending=False)
@@ -779,7 +784,7 @@ class AOIApp(tk.Tk):
         )
         rows = []
         for i, r in enumerate(grp.itertuples(), 1):
-            rows.append(f"#{i:>2}  {str(r.uname):<14}  {str(r.Defect):<22}  ({r.Count})")
+            rows.append(f"#{i:>2}  {str(r.component):<12}  {str(r.uname):<18}  ({r.Count})")
         return rows
 
     def _update_comp_defect_list(self, rows: list):
