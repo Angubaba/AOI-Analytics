@@ -1383,6 +1383,17 @@ class AOIApp(tk.Tk):
         self.total_cards_text.set(payload.get("summary", "Total PCBs flagged: -"))
         self.card_breakdown_text.set(payload.get("breakdown", ""))
 
+        if line == "combined":
+            dfs_by_line = payload.get("dfs_by_line", {})
+            if dfs_by_line:
+                combined_df = pd.concat(list(dfs_by_line.values()), ignore_index=True)
+                comp_rows = self._compute_comp_defect_top10(combined_df)
+            else:
+                comp_rows = []
+        else:
+            comp_rows = self._compute_comp_defect_top10(payload.get("df"))
+        self._update_comp_defect_list(comp_rows)
+
         self._show_chart_pair(payload["defects_png"], payload["cards_png"])
 
         drill = payload.get("drill")
