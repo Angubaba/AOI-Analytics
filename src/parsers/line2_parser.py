@@ -103,6 +103,7 @@ def parse_line2(file_path: str) -> pd.DataFrame:
                     # uname extraction: anchor TB (12 or 13). uname is token right before TB.
                     tb = next((t for t in tail if t in ("12", "13")), None)
                     uname = _extract_uname_from_tokens(tail)
+                    component = _extract_component_from_tokens(tail)
 
                     rows.append({
                         "StartDateTime_raw": start_raw,
@@ -112,6 +113,7 @@ def parse_line2(file_path: str) -> pd.DataFrame:
                         "PCBID": pcbid,
                         "MachineID": machine,
                         "uname": uname,
+                        "component": component,
                         "TB": tb,
                     })
 
