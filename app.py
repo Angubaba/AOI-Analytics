@@ -770,14 +770,21 @@ class AOIApp(tk.Tk):
             return []
         if "component" not in df.columns or "uname" not in df.columns:
             return []
-        tmp = df[["component", "uname"]].fillna("").astype(str)
-        # filter out rows where either value is empty or purely numeric
+        tmp = df[["component", "uname"]].copy()
+        if "JobFileIDShare" in df.columns:
+            tmp["_jf"] = df["JobFileIDShare"]
+        elif "JobFile" in df.columns:
+            tmp["_jf"] = df["JobFile"]
+        else:
+            tmp["_jf"] = ""
+        tmp = tmp.fillna("").astype(str)
+        tmp["Card"] = tmp["_jf"].apply(_extract_card_name)
         tmp = tmp[tmp["component"].str.contains(r"[A-Za-z]", regex=True)]
         tmp = tmp[tmp["uname"].str.contains(r"[A-Za-z]", regex=True)]
         if tmp.empty:
             return []
         grp = (
-            tmp.groupby(["component", "uname"])
+            tmp.groupby(["component", "uname", "Card"])
             .size()
             .reset_index(name="Count")
             .sort_values("Count", ascending=False)
@@ -785,7 +792,7 @@ class AOIApp(tk.Tk):
         )
         rows = []
         for i, r in enumerate(grp.itertuples(), 1):
-            rows.append(f"#{i:>2}  {str(r.component):<10}  {str(r.uname):<16}  {r.Count:>4}")
+            rows.append(f"#{i:>2}  {str(r.component):<10}  {str(r.uname):<14}  {str(r.Card):<16}  {r.Count:>4}")
         return rows
 
     def _update_comp_defect_list(self, rows: list):
@@ -793,9 +800,9 @@ class AOIApp(tk.Tk):
         if not rows:
             self.comp_defect_list.insert(tk.END, "  Run analysis to see top component × defect pairs.")
             return
-        header = f"  {'#':<4}{'Component':<10}  {'Defect':<16}  {'Ct':>4}"
+        header = f"  {'#':<4}{'Comp':<10}  {'Defect':<14}  {'Card':<16}  {'Ct':>4}"
         self.comp_defect_list.insert(tk.END, header)
-        self.comp_defect_list.insert(tk.END, "  " + "-" * 40)
+        self.comp_defect_list.insert(tk.END, "  " + "-" * 52)
         for row in rows:
             self.comp_defect_list.insert(tk.END, "  " + row)
 
