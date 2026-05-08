@@ -30,6 +30,7 @@ from src.analysis import (
     sum_time_series_dfs_on_time,
     pcbs_flagged_by_minute_multi,
     defect_occurs_over_time_7to7_multi,
+    _extract_card_name,
 )
 from src.plots import (
     plot_top_defects_bars,
