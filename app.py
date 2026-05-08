@@ -861,6 +861,19 @@ class AOIApp(tk.Tk):
 
         self.multi_panel_container.grid_remove()
 
+        cd_frame = tk.LabelFrame(top, text="Top 10 Component × Defect", padx=6, pady=4)
+        cd_frame.grid(row=0, column=3, rowspan=4, sticky="nsew", padx=(14, 0))
+        top.grid_columnconfigure(3, weight=0)
+        cd_scroll = tk.Scrollbar(cd_frame, orient="vertical")
+        self.comp_defect_list = tk.Listbox(
+            cd_frame, height=7, width=40, yscrollcommand=cd_scroll.set,
+            font=("Courier New", 9), selectmode="browse",
+        )
+        cd_scroll.config(command=self.comp_defect_list.yview)
+        cd_scroll.pack(side="right", fill="y")
+        self.comp_defect_list.pack(fill="both", expand=True)
+        self.comp_defect_list.insert(tk.END, "  Run analysis to populate.")
+
         status = tk.Frame(self.analysis_tab, padx=12, pady=0)
         status.pack(fill="x")
         tk.Label(status, textvariable=self.status_text, fg="#0b5394").pack(anchor="w")
