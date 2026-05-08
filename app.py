@@ -769,8 +769,9 @@ class AOIApp(tk.Tk):
             return []
         if "uname" not in df.columns or "Defect" not in df.columns:
             return []
+        tmp = df[["uname", "Defect"]].fillna("").astype(str)
         grp = (
-            df.groupby(["uname", "Defect"], dropna=False)
+            tmp.groupby(["uname", "Defect"])
             .size()
             .reset_index(name="Count")
             .sort_values("Count", ascending=False)
