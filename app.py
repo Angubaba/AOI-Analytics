@@ -1418,6 +1418,7 @@ class AOIApp(tk.Tk):
         for c in card_names:
             self.card_list.insert(tk.END, c)
 
+        self._update_comp_defect_list(self._compute_comp_defect_top10(self._df_current))
         self._show_chart_pair(defects_png, cards_png)
 
     def _clear_analysis_images(self):
