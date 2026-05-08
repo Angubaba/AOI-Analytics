@@ -873,6 +873,18 @@ class AOIApp(tk.Tk):
         self.defects_canvas.pack(fill="both", expand=True)
         self.defects_canvas.bind("<Button-1>", self._on_defect_chart_click)
 
+        cd_frame = tk.LabelFrame(right, text="Top 10 Component × Defect", padx=6, pady=4)
+        cd_frame.pack(fill="x", pady=(0, 6))
+        cd_scroll = tk.Scrollbar(cd_frame, orient="vertical")
+        self.comp_defect_list = tk.Listbox(
+            cd_frame, height=8, yscrollcommand=cd_scroll.set,
+            font=("Courier New", 9), selectmode="browse",
+        )
+        cd_scroll.config(command=self.comp_defect_list.yview)
+        cd_scroll.pack(side="right", fill="y")
+        self.comp_defect_list.pack(fill="x")
+        self.comp_defect_list.insert(tk.END, "  Run analysis to see top component × defect pairs.")
+
         summary = tk.Frame(right)
         summary.pack(fill="x", pady=(0, 4))
         tk.Label(summary, textvariable=self.total_cards_text, font=("Segoe UI", 10, "bold")).pack(anchor="w")
