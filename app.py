@@ -1438,6 +1438,7 @@ class AOIApp(tk.Tk):
 
         self.card_list.delete(0, tk.END)
         self._last_defects_labels = []
+        self._update_comp_defect_list([])
 
         self._set_card_ui_visible(True)
 
