@@ -796,7 +796,7 @@ class AOIApp(tk.Tk):
         self.comp_defect_list.insert(tk.END, header)
         self.comp_defect_list.insert(tk.END, "  " + "-" * 46)
         for row in rows:
-                self.comp_defect_list.insert(tk.END, "  " + row)
+            self.comp_defect_list.insert(tk.END, "  " + row)
 
     def _build_analysis_ui(self):
         top = tk.Frame(self.analysis_tab, padx=12, pady=10)
