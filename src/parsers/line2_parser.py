@@ -1,6 +1,6 @@
 import re
 import pandas as pd
-from ._utils import _extract_uname_from_tokens
+from ._utils import _extract_uname_from_tokens, _extract_component_from_tokens
 
 # Pre-compiled at module level — avoids recompiling inside the per-token inner loop
 _NUMERIC_RE  = re.compile(r"\d{3,}")
