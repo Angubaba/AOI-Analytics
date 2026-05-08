@@ -72,7 +72,10 @@ def parse_line1(file_path: str, encoding: str = "utf-16") -> pd.DataFrame:
                 if tbm:
                     left = line[: tbm.start()].strip()
                     if left:
-                        rec["uname"] = left.split()[-1]
+                        toks = left.split()
+                        rec["uname"] = toks[-1]
+                        if len(toks) >= 7:
+                            rec["component"] = toks[-7]
 
             except Exception as e:
                 rec["ParseError"] = str(e)
