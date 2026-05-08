@@ -882,7 +882,7 @@ class AOIApp(tk.Tk):
         top.grid_columnconfigure(3, weight=0)
         cd_scroll = tk.Scrollbar(cd_frame, orient="vertical")
         self.comp_defect_list = tk.Listbox(
-            cd_frame, height=7, width=50, yscrollcommand=cd_scroll.set,
+            cd_frame, height=7, width=62, yscrollcommand=cd_scroll.set,
             font=("Courier New", 9), selectmode="browse",
         )
         cd_scroll.config(command=self.comp_defect_list.yview)
