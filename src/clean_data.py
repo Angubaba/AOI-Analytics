@@ -33,6 +33,7 @@ def clean_aoi_data(df: pd.DataFrame) -> pd.DataFrame:
     print(f"🧼 Datetime parsed for {ok} / {len(df)} rows")
 
     df["uname"] = df.get("uname", "").fillna("").astype(str).str.strip()
+    df["component"] = df.get("component", "").fillna("").astype(str).str.strip()
     df["PCBID"] = df.get("PCBID", "").fillna("").astype(str).str.strip()
 
     return df
