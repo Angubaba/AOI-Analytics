@@ -784,7 +784,7 @@ class AOIApp(tk.Tk):
         )
         rows = []
         for i, r in enumerate(grp.itertuples(), 1):
-            rows.append(f"#{i:>2}  {str(r.component):<12}  {str(r.uname):<18}  {r.Count:>5} hits")
+            rows.append(f"#{i:>2}  {str(r.component):<10}  {str(r.uname):<16}  {r.Count:>4}")
         return rows
 
     def _update_comp_defect_list(self, rows: list):
@@ -792,9 +792,9 @@ class AOIApp(tk.Tk):
         if not rows:
             self.comp_defect_list.insert(tk.END, "  Run analysis to see top component × defect pairs.")
             return
-        header = f"  {'#':<4}{'Component':<12}  {'Defect':<18}  {'Count':>5}"
+        header = f"  {'#':<4}{'Component':<10}  {'Defect':<16}  {'Ct':>4}"
         self.comp_defect_list.insert(tk.END, header)
-        self.comp_defect_list.insert(tk.END, "  " + "-" * 46)
+        self.comp_defect_list.insert(tk.END, "  " + "-" * 40)
         for row in rows:
             self.comp_defect_list.insert(tk.END, "  " + row)
 
