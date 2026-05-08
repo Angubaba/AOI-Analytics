@@ -51,6 +51,7 @@ import src.chatbot as chatbot
 import src.chatbot_db as chatbot_db
 
 # matplotlib for FPY trend plots
+import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
