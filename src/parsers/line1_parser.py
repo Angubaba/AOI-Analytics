@@ -52,6 +52,7 @@ def parse_line1(file_path: str, encoding: str = "utf-16") -> pd.DataFrame:
                 "PCBID": None,
                 "MachineID": None,
                 "uname": None,
+                "component": None,
                 "ParseOK": False,
                 "ParseError": "",
             }
