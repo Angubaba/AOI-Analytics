@@ -76,6 +76,7 @@ def parse_line4(file_path: str) -> pd.DataFrame:
                         break
 
                 uname_guess = _extract_uname_from_tokens(tokens) or None
+                component_guess = _extract_component_from_tokens(tokens) or None
 
                 rows.append({
                     "PCBID": pcbid_guess,
@@ -85,6 +86,7 @@ def parse_line4(file_path: str) -> pd.DataFrame:
                     "EndDateTime_raw": None,
                     "AllBarCode": None,
                     "uname": uname_guess,
+                    "component": component_guess,
                     "ParseOK": False,
                     "ParseError": str(e)
                 })
